@@ -248,5 +248,10 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     console.log(n ? `Motores embutidos: ${Object.entries(cfg).map(([id, c]) => `${id} (${rotulo(c)})`).join(', ')}` : 'Nenhum motor embutido (motores.json ausente).');
   }
 
-  return { despachar, iniciar, listar, salvarAgente, testar, restaurar };
+  // Agentes que o Decisor pode escolher: os que têm IA configurada (com a função de cada um).
+  function equipe() {
+    return configuracao();
+  }
+
+  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe };
 }

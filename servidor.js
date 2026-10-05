@@ -13,6 +13,7 @@
 //   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
 //   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
 //   MOTORES_ARQUIVO   caminho do motores.json (padrão ./motores.json)
+//   LAYA_URL          servidor do Laya, que decide o agente das ordens "Automático" (ex.: http://laya:8000)
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   chaves das IAs dos motores embutidos
 //
 // Status (motor → escritório):
@@ -31,6 +32,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { criarMotores } from './motores/index.js';
+import { criarDecisor } from './motores/decisor.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -150,9 +152,10 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
-function criarOrdem({ para, texto, de = 'chefe', contexto }) {
+function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
+  if (decisao) ordem.decisao = decisao; // quem escolheu o agente (o Laya) e com que certeza
   ordens.push(ordem);
   if (ordens.length > MAX_ORDENS) ordens.shift();
   transmitir('ordem', ordem);
@@ -160,6 +163,7 @@ function criarOrdem({ para, texto, de = 'chefe', contexto }) {
   return ordem;
 }
 
+const decisor = criarDecisor();
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
 
 // ---------- rotas ----------
@@ -212,8 +216,18 @@ async function atender(req, res) {
     const texto = typeof dados.texto === 'string' ? dados.texto.trim() : '';
     if (!texto) return enviarJSON(res, 400, { erro: 'campo "texto" obrigatório' });
     if (typeof dados.para !== 'string' || !dados.para) return enviarJSON(res, 400, { erro: 'campo "para" obrigatório (id do agente ou "todos")' });
-    return enviarJSON(res, 201, criarOrdem({ para: dados.para, texto: texto.slice(0, 2000) }));
+    if (dados.para !== 'auto') return enviarJSON(res, 201, criarOrdem({ para: dados.para, texto: texto.slice(0, 2000) }));
+    // "Automático": o Laya decide qual agente cuida do pedido
+    try {
+      const decisao = await decisor.decidir(texto, motores.equipe());
+      return enviarJSON(res, 201, criarOrdem({ para: decisao.agente, texto: texto.slice(0, 2000), decisao }));
+    } catch (erro) {
+      console.error('[decisor]', erro.message);
+      return enviarJSON(res, 502, { erro: `o Laya não conseguiu decidir: ${erro.message}` });
+    }
   }
+
+  if (rota === '/api/decisor') return enviarJSON(res, 200, { ativo: decisor.ativo(), nome: 'Laya' });
 
   if (rota === '/api/ordens' && req.method === 'GET') return enviarJSON(res, 200, ordens.slice(-50));
 
@@ -346,6 +360,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 
 await carregar();
 motores.iniciar(estado);
+decisor.verificar();
 servidor.listen(PORTA, HOST, () => {
   console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);
   console.log(`Status:  POST /api/status  {"id","status","tarefa"}`);

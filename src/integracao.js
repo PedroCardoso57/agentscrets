@@ -28,7 +28,7 @@ const TAREFAS_DEMO = {
   revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -166,6 +166,8 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     } catch { return false; }
     servidorAtivo = true;
     processar(atual);
+    // o Laya está ligado? então a página oferece "Automático (Laya decide)"
+    fetch('api/decisor', { cache: 'no-store' }).then((r) => r.json()).then((d) => aoDecisor(Boolean(d.ativo))).catch(() => {});
     fetch('api/ordens', { cache: 'no-store' }).then((r) => r.json()).then((lista) => lista.forEach((o) => receberOrdem(o, true))).catch(() => {});
     // nenhum motor falou ainda: simula até chegar o primeiro status real
     const simulando = atual.length === 0 && params.get('demo') !== '0';

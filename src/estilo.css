@@ -87,6 +87,7 @@ html, body {
 #lista-ordens .chip.pendente { color: var(--aguardando); }
 #lista-ordens .chip.entregue { color: var(--concluido); }
 #lista-ordens .chip.respondida { color: var(--trabalhando); }
+#lista-ordens .decisao { margin-top: 4px; font-size: 11px; color: #c9b8ff; }
 #lista-ordens .resp { margin-top: 5px; padding-left: 8px; border-left: 2px solid var(--trabalhando); color: var(--suave); }
 #lista-ordens .resp b { color: var(--texto); }
 

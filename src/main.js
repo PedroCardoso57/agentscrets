@@ -110,6 +110,7 @@ function montarPainel() {
   lista.innerHTML = '';
   const selecionado = destinatario.value;
   destinatario.innerHTML = '<option value="todos">Para: todos</option>';
+  if (decisorAtivo) destinatario.prepend(new Option('🧭 Automático (Laya decide)', 'auto'));
   for (const [id, e] of estacoes) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
@@ -126,7 +127,7 @@ function montarPainel() {
     lista.appendChild(li);
     destinatario.add(new Option(`Para: ${e.agente.nome}`, id));
   }
-  destinatario.value = estacoes.has(selecionado) ? selecionado : 'todos';
+  destinatario.value = estacoes.has(selecionado) || (selecionado === 'auto' && decisorAtivo) ? selecionado : decisorAtivo ? 'auto' : 'todos';
 }
 
 function atualizarSubtitulo(e) {
@@ -205,6 +206,7 @@ const aviso = document.getElementById('aviso-ordem');
 const listaOrdens = document.getElementById('lista-ordens');
 const ordensVistas = new Map(); // id → nº de respostas já mostradas
 let integracao = null;
+let decisorAtivo = false;
 let configuracao = null;
 
 function avisar(texto, erro = false) {
@@ -265,6 +267,17 @@ function renderizarOrdens() {
     chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
     chip.classList.add(o.estado);
     li.querySelector('.texto').textContent = o.texto;
+    if (o.decisao) {
+      // quem decidiu o agente (o Laya), com que certeza e a urgência
+      const d = document.createElement('div');
+      d.className = 'decisao';
+      const certeza = `${Math.round((o.decisao.confianca || 0) * 100)}%`;
+      d.textContent = o.decisao.incerto
+        ? `🧭 ${o.decisao.por} ficou em dúvida (${nomeDe(o.decisao.escolhaOriginal)}, ${certeza}) e mandou para ${nomeDe(o.decisao.agente)}`
+        : `🧭 ${o.decisao.por} escolheu ${nomeDe(o.decisao.agente)} (${certeza} de certeza)`;
+      if (o.decisao.urgencia) d.textContent += ` · urgência: ${o.decisao.urgencia}`;
+      li.appendChild(d);
+    }
     o.respostas.forEach((r, indice) => {
       const resp = document.createElement('div');
       resp.className = 'resp';
@@ -364,6 +377,11 @@ enquadrarTudo();
 
 const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
+  aoDecisor(ativo) {
+    decisorAtivo = ativo;
+    montarPainel();
+    for (const id of estacoes.keys()) mostrarStatus(id);
+  },
   aoOrdem,
   ids: () => [...estacoes.keys()],
   aoAtualizar(id, dados) {

@@ -156,6 +156,20 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 
 Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
 
+## Laya: o despachante que decide quem faz cada pedido
+
+O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele é o despachante: mande a ordem para **🧭 Automático (Laya decide)** e ele escolhe o agente pela função de cada um, e a urgência. O seu bonequinho leva a ordem até o agente escolhido, e o painel mostra a decisão ("🧭 Laya escolheu Redator (87% de certeza) · urgência: hoje"). Pedidos grandes, ou quando o Laya fica em dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), vão para o Orquestrador.
+
+Para ligar no VPS (precisa de ~3 GB de RAM livres; confira com `free -h`):
+
+```bash
+nano .env      # descomente LAYA_URL=http://laya:8000 e ponha COMPOSE_PROFILES=https,laya
+docker compose up -d --build
+docker compose logs -f laya   # na primeira vez ele baixa o modelo (~2 GB); espere "Uvicorn running"
+```
+
+O Laya decide melhor quanto mais clara for a **função** de cada agente (em ⚙ Equipe).
+
 ## Trocando a IA pela tela e comparando na prática
 
 - **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
@@ -252,7 +266,8 @@ Rodando em casa, o servidor só aceita conexões desta máquina (`127.0.0.1`). Q
 index.html              página
 servidor.js             serve a página, recebe status e entrega ordens (Node, sem dependências)
 motores.exemplo.json    qual IA cada agente usa (copie para motores.json)
-motores/                motores embutidos: chama Claude, OpenAI, Gemini, APIs compatíveis ou webhooks
+motores/                motores embutidos (Claude, OpenAI, Gemini, APIs compatíveis, webhooks) e o decisor Laya
+laya/                   contêiner do servidor do Laya
 .env.exemplo            senha e chaves de API (copie para .env)
 docker-compose.yml      sobe no VPS, com HTTPS opcional
 Dockerfile, render.yaml, ecosystem.config.cjs   outras formas de deixar no ar 24h
