@@ -61,6 +61,17 @@ export function criarDecisor() {
     };
   }
 
+  // O Laya está respondendo agora? (guardado por 20 s para não consultar a cada clique)
+  let ultimaChecagem = { em: 0, online: false };
+  async function online() {
+    if (!ativo()) return false;
+    if (Date.now() - ultimaChecagem.em < 20000) return ultimaChecagem.online;
+    let ok = false;
+    try { ok = (await fetch(`${url()}/health`, { signal: AbortSignal.timeout(3000) })).ok; } catch { ok = false; }
+    ultimaChecagem = { em: Date.now(), online: ok };
+    return ok;
+  }
+
   async function verificar() {
     if (!ativo()) return;
     try {
@@ -71,5 +82,5 @@ export function criarDecisor() {
     }
   }
 
-  return { ativo, decidir, verificar };
+  return { ativo, online, decidir, verificar };
 }

@@ -126,7 +126,7 @@ export function criarSala(totalAgentes) {
   // plantas nos cantos
   sala.add(planta(xEsq + 0.6, zFundo + 0.6, 1.2));
   sala.add(planta(cx + largura / 2 - 0.6, zFundo + 2.4, 1.0));
-  sala.add(planta(xEsq + 0.6, cz + profundidade / 2 - 0.8, 0.9));
+  sala.add(planta(cx + largura / 2 - 0.6, cz + profundidade / 2 - 0.8, 0.9)); // o canto da frente à esquerda é do Crânio
   sala.add(planta(CORREDOR_X + 1.3, cz - 1, 0.8));
 
   return { grupo: sala, centro: new THREE.Vector3(cx, 0, cz), largura, profundidade };

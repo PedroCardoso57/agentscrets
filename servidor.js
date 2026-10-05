@@ -227,7 +227,7 @@ async function atender(req, res) {
     }
   }
 
-  if (rota === '/api/decisor') return enviarJSON(res, 200, { ativo: decisor.ativo(), nome: 'Laya' });
+  if (rota === '/api/decisor') return enviarJSON(res, 200, { ativo: decisor.ativo(), online: await decisor.online(), nome: 'Laya' });
 
   if (rota === '/api/ordens' && req.method === 'GET') return enviarJSON(res, 200, ordens.slice(-50));
 

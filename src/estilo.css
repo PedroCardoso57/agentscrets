@@ -117,6 +117,8 @@ html, body {
 #aviso-ordem.erro { color: var(--erro); }
 
 .etiqueta.chefe .placa { border-color: #f4d35e88; }
+.etiqueta.cranio .placa { border-color: #a77bff99; color: #e6dcff; }
+.etiqueta.cranio .balao { background: #2a2145; color: #f3ecff; border: 1px solid #a77bff88; }
 
 /* Botões do topo */
 .botoes-topo { display: flex; gap: 8px; align-items: center; pointer-events: auto; }

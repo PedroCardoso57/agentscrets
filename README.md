@@ -156,9 +156,9 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 
 Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
 
-## Laya: o despachante que decide quem faz cada pedido
+## Crânio: a sala do Laya, o despachante que decide quem faz cada pedido
 
-O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele é o despachante: mande a ordem para **🧭 Automático (Laya decide)** e ele escolhe o agente pela função de cada um, e a urgência. O seu bonequinho leva a ordem até o agente escolhido, e o painel mostra a decisão ("🧭 Laya escolheu Redator (87% de certeza) · urgência: hoje"). Pedidos grandes, ou quando o Laya fica em dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), vão para o Orquestrador.
+O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele mora no **Crânio**, uma sala de vidro no canto da frente, ao lado da sua mesa, com um cérebro holográfico que fica aceso quando o Laya está no ar. Mande a ordem para **🧠 Crânio decide (Laya)**: o seu bonequinho vai até o Crânio, o cérebro pulsa e solta um feixe de luz até o agente escolhido (pela função de cada um), um balão mostra a decisão e a urgência, e o bonequinho leva a ordem até esse agente. O painel registra a decisão ("🧠 Crânio escolheu Redator (87% de certeza) · urgência: hoje"). Clicar no Crânio na cena foca a câmera nele. Pedidos grandes, ou quando o Laya fica em dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), vão para o Orquestrador.
 
 Para ligar no VPS (precisa de ~3 GB de RAM livres; confira com `free -h`):
 
@@ -278,6 +278,7 @@ src/chefe.js            o seu bonequinho: anda até o agente e entrega a ordem
 src/integracao.js       HTTP/SSE, WebSocket, postMessage, ordens e modo demo
 src/main.js             cena 3D, câmera e painel
 src/configuracao.js     janelas Equipe (trocar IA) e Relatório
+src/cranio.js           a sala do Crânio (Laya) e a animação das decisões
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

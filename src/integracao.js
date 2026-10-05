@@ -167,7 +167,10 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     servidorAtivo = true;
     processar(atual);
     // o Laya está ligado? então a página oferece "Automático (Laya decide)"
-    fetch('api/decisor', { cache: 'no-store' }).then((r) => r.json()).then((d) => aoDecisor(Boolean(d.ativo))).catch(() => {});
+    const checarDecisor = () => fetch('api/decisor', { cache: 'no-store' }).then((r) => r.json())
+      .then((d) => aoDecisor({ ativo: Boolean(d.ativo), online: Boolean(d.online) })).catch(() => {});
+    checarDecisor();
+    setInterval(checarDecisor, 30000); // o cérebro do Crânio acende/apaga conforme o Laya
     fetch('api/ordens', { cache: 'no-store' }).then((r) => r.json()).then((lista) => lista.forEach((o) => receberOrdem(o, true))).catch(() => {});
     // nenhum motor falou ainda: simula até chegar o primeiro status real
     const simulando = atual.length === 0 && params.get('demo') !== '0';
