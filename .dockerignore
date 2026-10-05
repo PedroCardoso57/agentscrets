@@ -2,5 +2,6 @@
 node_modules
 dados
 motores.json
+.env
 docs
 **/__pycache__

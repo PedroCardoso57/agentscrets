@@ -6,9 +6,10 @@ Escritório 3D de agentes de IA. Cada agente (motor) tem a sua mesa e um bonequi
 
 ## Rodando
 
-Precisa só do Node 18+ (sem `npm install`; o Three.js já vem em `vendor/`).
+Precisa do Node 18+.
 
 ```bash
+npm install               # uma vez (SDK da Claude, para os motores embutidos)
 node servidor.js          # abre em http://localhost:8787
 ```
 
@@ -43,21 +44,28 @@ Em todos os casos, o servidor:
 
 O plano grátis do Render desliga o serviço quando ninguém acessa e não guarda arquivos entre reinícios; para 24h de verdade e histórico salvo, use um plano pago (o `render.yaml` já pede o `starter` com disco).
 
-### VPS com Docker
+### VPS com Docker (passo a passo)
 
-```bash
-git clone https://github.com/PedroCardoso57/agentscrets && cd agentscrets
-docker build -t agentscrets .
-docker run -d --name escritorio --restart unless-stopped -p 8787:8787 \
-  -e ESCRITORIO_SENHA=troque-esta-senha \
-  -v escritorio-dados:/app/dados agentscrets
-```
+1. **Alugue um VPS** com Ubuntu (1 GB de RAM basta) e instale o Docker: `curl -fsSL https://get.docker.com | sh`.
+2. **Baixe o escritório e crie as configurações:**
+   ```bash
+   git clone https://github.com/PedroCardoso57/agentscrets && cd agentscrets
+   cp .env.exemplo .env                  # senha e chaves das IAs
+   cp motores.exemplo.json motores.json  # qual IA cada agente usa
+   nano .env                             # preencha ESCRITORIO_SENHA e as chaves
+   ```
+3. **Suba:**
+   ```bash
+   docker compose up -d                  # → http://IP-DO-VPS:8787
+   ```
+4. **HTTPS (recomendado):** aponte um domínio (ex.: `escritorio.seudominio.com`) para o IP do VPS, coloque-o em `DOMINIO` no `.env` e rode `docker compose --profile https up -d`. O certificado sai sozinho. Depois feche a porta 8787 no firewall do VPS.
 
-`--restart unless-stopped` religa o escritório se ele cair ou se o VPS reiniciar. Para ter HTTPS (recomendado, a senha trafega no cabeçalho), coloque um proxy na frente, como o [Caddy](https://caddyserver.com): `caddy reverse-proxy --from escritorio.seudominio.com --to localhost:8787`.
+O escritório religa sozinho se cair ou se o VPS reiniciar. Comandos úteis: `docker compose logs -f` (ver o que está acontecendo), `docker compose restart` (depois de mudar o `.env`) e `git pull && docker compose up -d --build` (atualizar). Mudanças no `motores.json` valem na próxima ordem, sem reiniciar.
 
 ### Seu computador com PM2
 
 ```bash
+npm install                # dependências do escritório
 npm install -g pm2
 pm2 start ecosystem.config.cjs
 pm2 save && pm2 startup    # volta sozinho quando o computador liga
@@ -117,7 +125,38 @@ As mesas são distribuídas sozinhas (8 por bloco); a sala cresce conforme a equ
 
 O seu bonequinho é o `CHEFE`, no mesmo arquivo: troque `nome` (aparece como "★ Você"), cores, cabelo e pele.
 
-## Conectando os seus motores
+## Ligando as suas IAs (motores embutidos)
+
+O jeito principal: o próprio servidor chama a IA de cada agente. Você só configura o `motores.json` (copie de `motores.exemplo.json`):
+
+```json
+{
+  "orquestrador": { "provedor": "anthropic", "modelo": "claude-opus-5-5", "delegar": true, "funcao": "Planeja e distribui", "instrucoes": "Você é o Orquestrador..." },
+  "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "Escreve legendas", "instrucoes": "Você é o Redator..." },
+  "analista":     { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
+  "pesquisador":  { "provedor": "gemini", "modelo": "<modelo do Gemini>", "instrucoes": "..." },
+  "designer":     { "webhook": "https://seu-n8n.com/webhook/designer" }
+}
+```
+
+| `provedor` | IA | Chave (no `.env`) |
+|---|---|---|
+| `anthropic` | Claude | `ANTHROPIC_API_KEY` (console.anthropic.com) |
+| `openai` | GPT | `OPENAI_API_KEY` (platform.openai.com) |
+| `gemini` | Gemini | `GEMINI_API_KEY` (aistudio.google.com) |
+| `compativel` | OpenRouter, DeepSeek, Groq, Ollama… | variável que você indicar em `chaveEnv`, mais `baseUrl` |
+| `webhook` (só `"webhook": "url"`) | n8n, Make, API sua | — |
+
+- **Assinatura de chat não é chave de API.** ChatGPT Plus, Claude Pro, Gemini Advanced etc. servem para usar no site ou no app. Para o escritório chamar a IA sozinho, crie uma chave de API no painel de cada provedor; ela é cobrada por uso, à parte. Use só os provedores que quiser, e cada agente pode usar um diferente.
+- **`instrucoes`** é o papel do agente (o "prompt de sistema"); `funcao` é a descrição curta que o Orquestrador lê para decidir a quem passar cada tarefa.
+- **`delegar: true`** (Orquestrador): ele responde com um plano e o escritório cria as ordens para os outros agentes sozinho. Aparecem no painel como "Orquestrador → Redator".
+- **Claude:** `esforco` (`low`, `medium`, `high`, `xhigh`, `max`; padrão `medium`) troca qualidade por custo. Se a IA recusar um pedido por segurança, o próprio servidor da Anthropic tenta de novo com um modelo alternativo (*fallback* automático).
+- O status de cada agente e a IA que ele usa aparecem no painel. Erros (chave faltando, provedor fora do ar) aparecem como resposta e deixam o bonequinho em "erro".
+- Se o servidor reiniciar no meio de uma tarefa, ela é marcada como interrompida (em vez de ser repetida e cobrada de novo sem você saber).
+
+Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
+
+## Conectando motores externos
 
 Todos os caminhos usam a mesma mensagem:
 
@@ -166,7 +205,7 @@ curl -X POST http://localhost:8787/api/ordens/93abe7c2/resposta \
 
 Ordens para **todos** são entregues uma vez a cada agente que consultar. Veja os exemplos prontos: `exemplos/simular-motores.js` (Node) e `exemplos/motor_exemplo.py` (Python, sem dependências — `python exemplos/motor_exemplo.py redator`).
 
-**b) Webhook (o escritório chama o seu motor).** Copie `motores.exemplo.json` para `motores.json` e coloque a URL de cada agente (serve para n8n, Make, uma API sua etc.):
+**b) Webhook (o escritório chama o seu motor).** No `motores.json`, coloque a URL do agente (serve para n8n, Make, uma API sua etc.):
 
 ```json
 { "redator": { "webhook": "http://localhost:5000/ordem" } }
@@ -203,8 +242,11 @@ Rodando em casa, o servidor só aceita conexões desta máquina (`127.0.0.1`). Q
 ```
 index.html              página
 servidor.js             serve a página, recebe status e entrega ordens (Node, sem dependências)
-motores.exemplo.json    modelo de webhooks dos motores (copie para motores.json)
-Dockerfile, render.yaml, ecosystem.config.cjs   para deixar no ar 24h
+motores.exemplo.json    qual IA cada agente usa (copie para motores.json)
+motores/                motores embutidos: chama Claude, OpenAI, Gemini, APIs compatíveis ou webhooks
+.env.exemplo            senha e chaves de API (copie para .env)
+docker-compose.yml      sobe no VPS, com HTTPS opcional
+Dockerfile, render.yaml, ecosystem.config.cjs   outras formas de deixar no ar 24h
 src/agentes.js          equipe e estados
 src/escritorio.js       sala, mesas, monitores e quadro branco
 src/boneco.js           bonequinho e suas animações

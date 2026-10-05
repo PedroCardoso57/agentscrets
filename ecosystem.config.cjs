@@ -1,4 +1,5 @@
 // Para deixar rodando 24h no seu computador ou num VPS com PM2:
+//   npm install            (dependências do escritório)
 //   npm install -g pm2
 //   ESCRITORIO_SENHA=troque-esta-senha pm2 start ecosystem.config.cjs
 //   pm2 save && pm2 startup     (volta sozinho quando a máquina reinicia)

@@ -113,13 +113,18 @@ function montarPainel() {
     const li = document.createElement('li');
     li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
     li.querySelector('.nome span').textContent = e.agente.nome;
-    li.querySelector('.nome small').textContent = e.agente.funcao ? `· ${e.agente.funcao}` : '';
+    e.item = li;
+    atualizarSubtitulo(e);
     li.onclick = () => selecionar(id);
     lista.appendChild(li);
-    e.item = li;
     destinatario.add(new Option(`Para: ${e.agente.nome}`, id));
   }
   destinatario.value = estacoes.has(selecionado) ? selecionado : 'todos';
+}
+
+function atualizarSubtitulo(e) {
+  const partes = [e.agente.funcao, e.agente.motor].filter(Boolean);
+  e.item.querySelector('.nome small').textContent = partes.length ? `· ${partes.join(' · ')}` : '';
 }
 
 // Seleciona o agente para a próxima ordem e foca a câmera nele.
@@ -244,8 +249,9 @@ function renderizarOrdens() {
   listaOrdens.innerHTML = '';
   for (const o of todas) {
     const li = document.createElement('li');
-    li.innerHTML = '<div class="cab"><span>→ <b></b></span><span class="chip"></span></div><div class="texto"></div>';
-    li.querySelector('.cab b').textContent = nomeDe(o.para);
+    li.innerHTML = '<div class="cab"><b></b><span class="chip"></span></div><div class="texto"></div>';
+    // ordens delegadas por um agente (ex.: Orquestrador) mostram quem mandou
+    li.querySelector('.cab b').textContent = o.de && o.de !== 'chefe' ? `${nomeDe(o.de)} → ${nomeDe(o.para)}` : `Você → ${nomeDe(o.para)}`;
     const chip = li.querySelector('.chip');
     const simulada = o.local || o.respostas.some((r) => r.simulada);
     chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
@@ -280,6 +286,7 @@ function aoOrdem(ordem, { nova }) {
   }
 
   if (!nova) return;
+  if (ordem.de && ordem.de !== 'chefe') return; // delegada entre agentes: o seu bonequinho não precisa ir
   if (ordem.local) avisar('Sem servidor, a ordem fica só na simulação. Rode "node servidor.js" para ela chegar aos seus motores.');
   else avisar(chefe.ocupado() ? 'Ordem na fila: o seu bonequinho entrega assim que terminar a anterior.' : '');
   const todos = ordem.para === 'todos';
@@ -315,6 +322,10 @@ integracao = criarIntegracao({
     if (!e) return false;
     if (dados.status) e.estado = dados.status;
     if ('tarefa' in dados) e.tarefa = dados.tarefa || '';
+    if (dados.motor && dados.motor !== e.agente.motor) {
+      e.agente.motor = dados.motor; // qual IA move este agente
+      atualizarSubtitulo(e);
+    }
     mostrarStatus(id);
     return true;
   },

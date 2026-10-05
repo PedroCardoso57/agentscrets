@@ -8,5 +8,10 @@
     "start": "node servidor.js",
     "simular": "node exemplos/simular-motores.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0"
+  }
 }
