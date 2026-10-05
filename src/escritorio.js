@@ -44,15 +44,24 @@ export function posicaoEstacao(indice) {
     : { x, z: zPod + DIST_FILEIRA, rot: Math.PI }; // olha para -z
 }
 
+// Mesa do chefe: de frente para a equipe, na parte da frente da sala.
+export function posicaoChefe(totalAgentes) {
+  const pods = Math.max(1, Math.ceil(totalAgentes / (COLUNAS * 2)));
+  return { x: 0, z: (pods - 1) * ESPACO_POD + 4.7, rot: Math.PI };
+}
+
+// Corredores por onde o chefe anda sem atravessar as mesas.
+export const CORREDOR_X = (COLUNAS * ESPACO_X) / 2 + 0.95;
+
 // ---------- sala ----------
 
 export function criarSala(totalAgentes) {
   const sala = new THREE.Group();
   const pods = Math.max(1, Math.ceil(totalAgentes / (COLUNAS * 2)));
   const largura = COLUNAS * ESPACO_X + 9;
-  const profundidade = (pods - 1) * ESPACO_POD + 10;
+  const profundidade = (pods - 1) * ESPACO_POD + 12;
   const cx = 1.5; // espaço extra à direita para a copa
-  const cz = ((pods - 1) * ESPACO_POD) / 2;
+  const cz = ((pods - 1) * ESPACO_POD) / 2 + 1; // +1: espaço na frente para a mesa do chefe
 
   // piso de madeira com tábuas
   const piso = new THREE.Mesh(new THREE.PlaneGeometry(largura, profundidade), new THREE.MeshStandardMaterial({ map: texturaPiso(), roughness: 0.85 }));
@@ -118,7 +127,7 @@ export function criarSala(totalAgentes) {
   sala.add(planta(xEsq + 0.6, zFundo + 0.6, 1.2));
   sala.add(planta(cx + largura / 2 - 0.6, zFundo + 2.4, 1.0));
   sala.add(planta(xEsq + 0.6, cz + profundidade / 2 - 0.8, 0.9));
-  sala.add(planta(COLUNAS * ESPACO_X / 2 + 1.2, cz, 0.8));
+  sala.add(planta(CORREDOR_X + 1.3, cz - 1, 0.8));
 
   return { grupo: sala, centro: new THREE.Vector3(cx, 0, cz), largura, profundidade };
 }
@@ -196,6 +205,15 @@ export function criarEstacao(agente) {
   g.add(caixa(0.5, 0.025, 0.16, mat('#2a2d35'), -0.02, altura + 0.035, zCentro - 0.2));
   const mouse = caixa(0.06, 0.03, 0.1, mat('#2a2d35'), -0.38, altura + 0.04, zCentro - 0.2);
   g.add(mouse);
+
+  if (agente.chefe) {
+    // encosto alto e plaquinha de chefe
+    cadeira.add(caixa(0.5, 0.45, 0.07, mat('#3b2a20'), 0, 1.25, -0.25));
+    const placa = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.1), new THREE.MeshBasicMaterial({ map: texturaTexto('CHEFE', '#f4d35e', '#2a2d35', 72) }));
+    placa.position.set(0.45, altura + 0.08, zCentro - 0.3);
+    placa.rotation.x = -0.5;
+    g.add(placa);
+  }
 
   // caneca e luminária de status
   g.add(cilindro(0.045, 0.04, 0.1, mat(agente.cor), 0.65, altura + 0.075, zCentro - 0.05));

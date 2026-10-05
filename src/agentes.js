@@ -20,6 +20,9 @@ export const AGENTES = [
   { id: 'revisor',      nome: 'Revisor',      funcao: 'Revisa e aprova entregas',     atividade: 'ler',      cor: '#8e99ad', cabelo: '#9a9a9a', pele: '#c68642' },
 ];
 
+// Você! O seu bonequinho fica na mesa do chefe e leva as ordens até a equipe.
+export const CHEFE = { id: 'chefe', nome: 'Você', funcao: 'Chefe', cor: '#22314f', cabelo: '#2b1d14', pele: '#f1c27d' };
+
 // Estados aceitos e a cor de cada um.
 export const STATUS = {
   ocioso:      { rotulo: 'ocioso',      cor: '#8e99ad' },

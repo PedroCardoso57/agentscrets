@@ -31,6 +31,13 @@ export class Boneco {
     this.emPe = 0;
     this.tempoNoEstado = 0;
     this.estadoAnterior = null;
+    this.rota = [];        // pontos (no espaço do pai) para andar, em ordem
+    this.rotFinal = null;  // para onde olhar ao chegar (null = padrão da mesa)
+    this.posto = null;     // onde ficar depois da rota (null = cadeira ou quadro)
+    this.velocidade = 1.4; // metros por segundo
+    this.gesto = null;     // 'apontar' | 'anunciar' — usado pelo chefe ao dar ordens
+    this.atencaoAte = 0;   // até quando fica virado ouvindo o chefe
+    this.atencaoGiro = 0;
 
     const camisa = mat(agente.cor, { roughness: 0.9 });
     const pele = mat(agente.pele || '#f1c27d', { roughness: 0.6 });
@@ -106,6 +113,14 @@ export class Boneco {
     this.boca.position.set(0, 0.1, 0.16);
     this.boca.rotation.z = Math.PI;
     this.pescoco.add(this.boca);
+
+    if (agente.chefe) {
+      // gravata
+      const gravata = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.3, 4), mat('#c8102e'));
+      gravata.position.set(0, 0.36, 0.14);
+      gravata.rotation.set(-0.12, Math.PI / 4, Math.PI);
+      this.tronco.add(gravata);
+    }
 
     this.criarAderecos(agente.atividade);
   }
@@ -222,8 +237,38 @@ export class Boneco {
         p.cabecaX = -0.25;
       }
     }
+    // gestos e atenção têm prioridade sobre a pose do estado
+    if (this.gesto === 'apontar') {
+      p.emPe = 1;
+      p.dir = { x: -1.45 + Math.sin(t * 5) * 0.12, abre: 0.15, cot: -0.15 };
+      p.esq = { x: -0.5 + Math.sin(t * 3) * 0.2, abre: 0.2, cot: -1.2 };
+      p.troncoX = 0.02; p.cabecaX = 0.1; p.cabecaY = 0;
+      p.boca = Math.abs(Math.sin(t * 9));
+    } else if (this.gesto === 'anunciar') {
+      p.emPe = 1;
+      const g = Math.sin(t * 4);
+      p.esq = { x: -2.2 + g * 0.3, abre: 0.6, cot: -0.4 };
+      p.dir = { x: -2.2 - g * 0.3, abre: 0.6, cot: -0.4 };
+      p.troncoX = -0.05; p.cabecaX = -0.1; p.cabecaY = Math.sin(t * 1.5) * 0.4;
+      p.boca = Math.abs(Math.sin(t * 9));
+    } else if (t < this.atencaoAte && !p.emPe) {
+      // vira na cadeira para ouvir o chefe
+      p.troncoY = this.atencaoGiro; p.cabecaY = this.atencaoGiro * 0.4; p.cabecaX = -0.2;
+      p.esq = { x: -0.45, abre: -0.05, cot: -0.6 };
+      p.dir = { x: -0.45, abre: -0.05, cot: -0.6 };
+      if (t > this.atencaoAte - 1) { p.dir = { x: -1.6, abre: 0.3, cot: -1.6 }; } // "positivo!"
+    }
     return p;
   }
+
+  // Anda pelos pontos dados e, ao chegar, olha para `rotFinal`.
+  irPor(pontos, rotFinal = null) {
+    this.rota = pontos.map((v) => v.clone());
+    this.posto = this.rota.length ? this.rota[this.rota.length - 1].clone() : null; // onde fica ao terminar
+    this.rotFinal = rotFinal;
+  }
+
+  chegou() { return this.rota.length === 0 && this.parado; }
 
   atualizar(dt, t, estado) {
     if (estado !== this.estadoAnterior) { this.estadoAnterior = estado; this.tempoNoEstado = 0; }
@@ -233,18 +278,27 @@ export class Boneco {
     const k = 1 - Math.exp(-dt * 9);
     const L = (a, b) => a + (b - a) * k;
 
-    // deslocamento: levanta, gira e anda até o quadro (ou volta e senta)
-    const destino = p.local === 'quadro' ? POS_QUADRO : new THREE.Vector3();
+    // deslocamento: levanta, anda pela rota (ou até o quadro), gira e senta ao voltar
+    const naRota = this.rota.length > 0;
+    const destino = naRota ? this.rota[0] : this.posto ?? (p.local === 'quadro' ? POS_QUADRO : new THREE.Vector3());
     const dist = this.raiz.position.distanceTo(destino);
+    if (naRota && dist < 0.05) this.rota.shift();
     const andando = dist > 0.03;
-    const querEmPe = p.emPe || andando ? 1 : 0;
+    this.parado = !andando;
+    const querEmPe = p.emPe || andando || this.rota.length || this.rotFinal !== null ? 1 : 0;
     this.emPe = L(this.emPe, querEmPe);
+    let rotAlvo = this.rotFinal ?? (p.local === 'quadro' ? Math.PI : 0);
     if (this.emPe > 0.85 && andando) {
-      const passo = Math.min(dist, dt * 1.1);
-      this.raiz.position.add(destino.clone().sub(this.raiz.position).normalize().multiplyScalar(passo));
+      const dir = destino.clone().sub(this.raiz.position).normalize();
+      this.raiz.position.add(dir.multiplyScalar(Math.min(dist, dt * this.velocidade)));
+      if (dist > 0.25) rotAlvo = Math.atan2(dir.x, dir.z); // olha para onde anda
     }
-    const rotAlvo = p.local === 'quadro' ? Math.PI : 0;
-    this.raiz.rotation.y = L(this.raiz.rotation.y, this.emPe > 0.5 ? rotAlvo : this.raiz.rotation.y);
+    if (this.emPe > 0.5) {
+      // gira pelo caminho mais curto
+      let d = rotAlvo - this.raiz.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.raiz.rotation.y += d * k;
+    }
 
     this.quadril.position.y = ALT_SENTADO + (ALT_EM_PE - ALT_SENTADO) * this.emPe;
     const balanco = andando && this.emPe > 0.85 ? Math.sin(t * 9) : 0;

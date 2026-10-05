@@ -1,0 +1,4 @@
+{
+  "redator": { "webhook": "http://localhost:5000/ordem" },
+  "analista": { "webhook": "https://seu-n8n.exemplo.com/webhook/analista" }
+}

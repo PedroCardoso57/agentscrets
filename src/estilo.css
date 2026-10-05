@@ -75,7 +75,50 @@ html, body {
 }
 .etiqueta .placa i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
 
+/* Ordens */
+.titulo-equipe { margin-top: 14px !important; }
+#lista-ordens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto; }
+#lista-ordens li { font-size: 12px; padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--borda); }
+#lista-ordens li.vazio { color: var(--suave); background: none; border: none; padding: 0; }
+#lista-ordens .cab { display: flex; justify-content: space-between; gap: 6px; color: var(--suave); margin-bottom: 3px; }
+#lista-ordens .cab b { color: var(--texto); }
+#lista-ordens .chip { font-size: 10px; padding: 1px 6px; border-radius: 99px; background: #ffffff14; white-space: nowrap; }
+#lista-ordens .chip.pendente { color: var(--aguardando); }
+#lista-ordens .chip.entregue { color: var(--concluido); }
+#lista-ordens .chip.respondida { color: var(--trabalhando); }
+#lista-ordens .resp { margin-top: 5px; padding-left: 8px; border-left: 2px solid var(--trabalhando); color: var(--suave); }
+#lista-ordens .resp b { color: var(--texto); }
+
+/* Barra de comando do chefe */
+#comando {
+  position: fixed; left: 16px; right: 302px; bottom: 16px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--painel); border: 1px solid var(--borda); border-radius: 12px;
+  padding: 8px; backdrop-filter: blur(6px);
+  max-width: 820px; margin: 0 auto;
+}
+#comando .quem { display: flex; align-items: center; gap: 6px; padding-left: 4px; }
+#comando .coroa { color: #f4d35e; font-size: 16px; }
+#comando select, #comando input, #comando button {
+  font: inherit; font-size: 14px; color: var(--texto);
+  background: #ffffff10; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 10px;
+}
+#comando select { max-width: 170px; }
+#comando select option { background: #1d2230; }
+#comando input { flex: 1; min-width: 160px; }
+#comando input:focus, #comando select:focus { outline: 2px solid #4c8dff88; outline-offset: 0; }
+#comando button { background: #4c8dff; border-color: #4c8dff; font-weight: 600; cursor: pointer; }
+#comando button:hover { background: #3a7af0; }
+#comando button:disabled { opacity: 0.5; cursor: default; }
+#aviso-ordem { flex-basis: 100%; margin: 0; font-size: 11px; color: var(--suave); padding-left: 4px; }
+#aviso-ordem:empty { display: none; }
+#aviso-ordem.erro { color: var(--erro); }
+
+.etiqueta.chefe .placa { border-color: #f4d35e88; }
+
 @media (max-width: 640px) {
-  #painel { top: auto; bottom: 12px; left: 16px; right: 16px; width: auto; max-height: 36%; }
+  #painel { top: auto; bottom: 120px; left: 16px; right: 16px; width: auto; max-height: 30%; }
+  #comando { left: 16px; right: 16px; bottom: 12px; }
+  #comando select { max-width: 130px; }
   .etiqueta .balao { display: none; }
 }
