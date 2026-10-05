@@ -1,0 +1,12 @@
+{
+  "name": "agentscrets",
+  "version": "0.1.0",
+  "description": "Escritório 3D onde cada agente de IA trabalha na sua mesa",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node servidor.js",
+    "simular": "node exemplos/simular-motores.js"
+  },
+  "engines": { "node": ">=18" }
+}
