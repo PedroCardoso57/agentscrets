@@ -23,10 +23,22 @@
   </header>
 
   <aside id="painel">
-    <h2>Equipe</h2>
+    <h2>Ordens</h2>
+    <ul id="lista-ordens"><li class="vazio">Nenhuma ordem ainda. Escreva na barra de baixo: o seu bonequinho leva a ordem até a mesa do agente.</li></ul>
+    <h2 class="titulo-equipe">Equipe</h2>
     <ul id="lista-agentes"></ul>
-    <p class="dica">Clique num agente para focar a câmera. Arraste para girar, role para dar zoom.</p>
+    <p class="dica">Clique num agente (aqui ou na cena) para focar e mandar ordem para ele. Arraste para girar, role para dar zoom.</p>
   </aside>
+
+  <form id="comando" autocomplete="off">
+    <label class="quem" title="Seu bonequinho de chefe">
+      <span class="coroa">★</span>
+      <select id="destinatario" aria-label="Para quem é a ordem"></select>
+    </label>
+    <input id="texto-ordem" type="text" maxlength="2000" placeholder="Dê uma ordem… (ex.: escreva 3 legendas para o post de segunda)" aria-label="Ordem" />
+    <button type="submit">Enviar</button>
+    <p id="aviso-ordem" role="status"></p>
+  </form>
 
   <script type="module" src="src/main.js"></script>
 </body>
