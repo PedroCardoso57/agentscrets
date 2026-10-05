@@ -48,7 +48,7 @@ if (!SO_LOCAL && !SENHA) {
   process.exit(1);
 }
 const STATUS_VALIDOS = ['ocioso', 'trabalhando', 'aguardando', 'concluido', 'erro'];
-const MAX_ORDENS = 200;
+const MAX_ORDENS = 2000; // ~ semanas de histórico para o relatório
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.png': 'image/png' };
 
 const estado = new Map(); // id → último status recebido
@@ -144,8 +144,9 @@ function marcarEntregue(ordem, agente) {
   if (!ordem.entregue.includes(agente)) ordem.entregue.push(agente);
 }
 
-function registrarResposta(ordem, agente, texto) {
-  ordem.respostas.push({ agente, texto: String(texto).slice(0, 2000), em: new Date().toISOString() });
+// extra: { motor, ms, erro } — de qual IA veio e quanto demorou, para o relatório
+function registrarResposta(ordem, agente, texto, extra = {}) {
+  ordem.respostas.push({ agente, texto: String(texto).slice(0, 20000), em: new Date().toISOString(), ...extra });
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
@@ -159,7 +160,7 @@ function criarOrdem({ para, texto, de = 'chefe', contexto }) {
   return ordem;
 }
 
-const motores = criarMotores({ raiz: RAIZ, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
+const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
 
 // ---------- rotas ----------
 
@@ -239,6 +240,48 @@ async function atender(req, res) {
     return enviarJSON(res, 200, ordem);
   }
 
+  // ---------- configuração da equipe pela tela ----------
+
+  if (rota === '/api/motores' && req.method === 'GET') return enviarJSON(res, 200, motores.listar());
+  if (rota === '/api/motores/restaurar' && req.method === 'POST') { await motores.restaurar(); return enviarJSON(res, 200, motores.listar()); }
+
+  const motor = rota.match(/^\/api\/motores\/([\w-]{1,40})(\/testar)?$/);
+  if (motor && req.method === 'POST') {
+    let dados;
+    try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
+    try {
+      if (motor[2]) return enviarJSON(res, 200, await motores.testar(motor[1], dados));
+      return enviarJSON(res, 200, { ok: true, config: await motores.salvarAgente(motor[1], dados) });
+    } catch (erro) {
+      return enviarJSON(res, 400, { erro: erro.message });
+    }
+  }
+
+  // ---------- avaliação das respostas e relatório ----------
+
+  const avaliacao = rota.match(/^\/api\/ordens\/([\w-]+)\/avaliacao$/);
+  if (avaliacao && req.method === 'POST') {
+    const ordem = ordens.find((o) => o.id === avaliacao[1]);
+    if (!ordem) return enviarJSON(res, 404, { erro: 'ordem não encontrada' });
+    let dados;
+    try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
+    const resp = ordem.respostas[Number(dados.indice)];
+    if (!resp) return enviarJSON(res, 400, { erro: 'resposta não encontrada' });
+    if (![1, -1, 0].includes(dados.nota)) return enviarJSON(res, 400, { erro: 'nota deve ser 1 (bom), -1 (ruim) ou 0 (limpar)' });
+    if (dados.nota === 0) { delete resp.nota; delete resp.comentario; } else {
+      resp.nota = dados.nota;
+      resp.comentario = typeof dados.comentario === 'string' ? dados.comentario.trim().slice(0, 500) : resp.comentario;
+      if (!resp.comentario) delete resp.comentario;
+    }
+    transmitir('ordem', ordem);
+    return enviarJSON(res, 200, ordem);
+  }
+
+  if (rota === '/api/relatorio') {
+    const desde = Date.now() - Number(url.searchParams.get('dias') || 7) * 864e5;
+    return enviarJSON(res, 200, montarRelatorio(desde));
+  }
+
   if (rota === '/api/eventos') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(': conectado\n\n');
@@ -261,6 +304,35 @@ async function atender(req, res) {
   } catch {
     res.writeHead(404); res.end('não encontrado');
   }
+}
+
+// Resumo por agente e por IA: quantas ordens, aprovação, erros e tempo médio.
+function montarRelatorio(desde) {
+  const vazio = () => ({ respostas: 0, boas: 0, ruins: 0, erros: 0, msTotal: 0, comMs: 0 });
+  const somar = (alvo, r) => {
+    alvo.respostas++;
+    if (r.erro || /^Erro:/.test(r.texto)) alvo.erros++;
+    if (r.nota === 1) alvo.boas++;
+    if (r.nota === -1) alvo.ruins++;
+    if (typeof r.ms === 'number') { alvo.msTotal += r.ms; alvo.comMs++; }
+  };
+  const agentes = {};
+  for (const o of ordens) {
+    if (Date.parse(o.criadaEm) < desde) continue;
+    for (const r of o.respostas) {
+      const a = (agentes[r.agente] ??= { ...vazio(), recebidas: new Set(), porMotor: {}, comentarios: [] });
+      somar(a, r);
+      a.recebidas.add(o.id);
+      somar((a.porMotor[r.motor || 'externo'] ??= vazio()), r);
+      if (r.comentario) a.comentarios.push({ nota: r.nota, texto: r.comentario, ordem: o.texto.slice(0, 80), motor: r.motor });
+    }
+  }
+  const fechar = (x) => ({ respostas: x.respostas, boas: x.boas, ruins: x.ruins, erros: x.erros, msMedio: x.comMs ? Math.round(x.msTotal / x.comMs) : null });
+  return Object.fromEntries(Object.entries(agentes).map(([id, a]) => [id, {
+    ...fechar(a),
+    porMotor: Object.fromEntries(Object.entries(a.porMotor).map(([m, x]) => [m, fechar(x)])),
+    comentarios: a.comentarios.slice(-10),
+  }]));
 }
 
 // ao ser desligado (deploy, reinício), salva antes de sair

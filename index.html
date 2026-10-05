@@ -19,7 +19,11 @@
 
   <header id="topo">
     <h1>agentscrets <span>escritório de agentes de IA</span></h1>
-    <div id="conexao" title="Origem dos status">● demo</div>
+    <div class="botoes-topo">
+      <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
+      <button type="button" id="abrir-equipe" title="Escolher a IA de cada agente">⚙ Equipe</button>
+      <div id="conexao" title="Origem dos status">● demo</div>
+    </div>
   </header>
 
   <aside id="painel">
@@ -39,6 +43,24 @@
     <button type="submit">Enviar</button>
     <p id="aviso-ordem" role="status"></p>
   </form>
+
+  <dialog id="dlg-equipe" aria-labelledby="titulo-equipe">
+    <header><h2 id="titulo-equipe">Equipe · qual IA cada agente usa</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-relatorio" aria-labelledby="titulo-relatorio">
+    <header>
+      <h2 id="titulo-relatorio">Relatório da equipe</h2>
+      <select name="dias" aria-label="Período">
+        <option value="1">Hoje</option>
+        <option value="7" selected>Últimos 7 dias</option>
+        <option value="30">Últimos 30 dias</option>
+      </select>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <div class="corpo"></div>
+  </dialog>
 
   <script type="module" src="src/main.js"></script>
 </body>

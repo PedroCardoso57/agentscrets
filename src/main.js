@@ -6,6 +6,7 @@ import { criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro }
 import { Boneco } from './boneco.js';
 import { Chefe } from './chefe.js';
 import { criarIntegracao } from './integracao.js';
+import { criarConfiguracao } from './configuracao.js';
 
 // ---------- renderização ----------
 
@@ -116,6 +117,12 @@ function montarPainel() {
     e.item = li;
     atualizarSubtitulo(e);
     li.onclick = () => selecionar(id);
+    const engrenagem = document.createElement('button');
+    engrenagem.type = 'button';
+    engrenagem.className = 'engrenagem';
+    engrenagem.textContent = '⚙ trocar IA';
+    engrenagem.onclick = (ev) => { ev.stopPropagation(); configuracao?.abrirEquipe(id); };
+    li.appendChild(engrenagem);
     lista.appendChild(li);
     destinatario.add(new Option(`Para: ${e.agente.nome}`, id));
   }
@@ -198,6 +205,7 @@ const aviso = document.getElementById('aviso-ordem');
 const listaOrdens = document.getElementById('lista-ordens');
 const ordensVistas = new Map(); // id → nº de respostas já mostradas
 let integracao = null;
+let configuracao = null;
 
 function avisar(texto, erro = false) {
   aviso.textContent = texto;
@@ -257,16 +265,57 @@ function renderizarOrdens() {
     chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
     chip.classList.add(o.estado);
     li.querySelector('.texto').textContent = o.texto;
-    for (const r of o.respostas) {
+    o.respostas.forEach((r, indice) => {
       const resp = document.createElement('div');
       resp.className = 'resp';
-      resp.innerHTML = '<b></b>: <span></span>';
+      resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
       resp.querySelector('b').textContent = nomeDe(r.agente);
-      resp.querySelector('span').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      resp.querySelector('.corpo-resp').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
       li.appendChild(resp);
-    }
+    });
     listaOrdens.appendChild(li);
   }
+}
+
+// 👍 / 👎 em cada resposta, com a IA que respondeu e o tempo — base do relatório
+function barraAvaliacao(ordem, r, indice) {
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const info = document.createElement('span');
+  info.textContent = [r.motor, typeof r.ms === 'number' ? `${(r.ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(' · ');
+  for (const [nota, emoji, titulo] of [[1, '👍', 'Boa resposta'], [-1, '👎', 'Resposta ruim']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = emoji;
+    b.title = titulo;
+    b.classList.toggle('marcado', r.nota === nota);
+    b.onclick = async () => {
+      const nova = r.nota === nota ? 0 : nota; // clicar de novo desmarca
+      let comentario;
+      if (nova === -1) comentario = prompt('O que faltou nessa resposta? (opcional, ajuda a escolher a melhor IA)') ?? undefined;
+      try {
+        const r2 = await fetch(`api/ordens/${encodeURIComponent(ordem.id)}/avaliacao`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ indice, nota: nova, comentario }),
+        });
+        if (!r2.ok) throw new Error((await r2.json().catch(() => ({}))).erro || `HTTP ${r2.status}`);
+        aoOrdem(await r2.json(), { nova: false });
+      } catch (erro) {
+        avisar(`Não consegui salvar a avaliação: ${erro.message}`, true);
+      }
+    };
+    meta.appendChild(b);
+  }
+  meta.appendChild(info);
+  if (r.comentario) {
+    const c = document.createElement('div');
+    c.className = 'coment';
+    c.textContent = `“${r.comentario}”`;
+    const box = document.createElement('div');
+    box.append(meta, c);
+    return box;
+  }
+  return meta;
 }
 
 function aoOrdem(ordem, { nova }) {
@@ -352,6 +401,12 @@ integracao = criarIntegracao({
     conexao.textContent = `● ${texto}`;
     conexao.classList.toggle('online', online);
   },
+});
+
+configuracao = criarConfiguracao({
+  agentesVisiveis: () => [...estacoes.keys()],
+  nomeDe,
+  servidorAtivo: () => integracao.servidorAtivo(),
 });
 
 // ---------- loop ----------

@@ -156,6 +156,15 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 
 Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
 
+## Trocando a IA pela tela e comparando na prática
+
+- **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
+- O que você salva pela tela fica na pasta de dados e passa a valer no lugar do `motores.json`. Para voltar ao arquivo, use **"Voltar ao motores.json do servidor"** na mesma janela.
+- **👍 / 👎** em cada resposta (no painel de Ordens), com comentário opcional no 👎. Cada resposta guarda qual IA respondeu e quanto tempo levou.
+- **📊 Relatório**: por agente e por IA, mostra respostas, aprovação, erros, tempo médio e os comentários. Escolha hoje, 7 ou 30 dias.
+
+**Sugestão para a primeira semana:** mande quase tudo para o **Orquestrador** e deixe ele distribuir; avalie cada resposta com 👍 / 👎; no meio da semana, troque a IA dos agentes com pior aprovação e compare no relatório. No fim, fique com a melhor IA para cada papel.
+
 ## Conectando motores externos
 
 Todos os caminhos usam a mesma mensagem:
@@ -253,6 +262,7 @@ src/boneco.js           bonequinho e suas animações
 src/chefe.js            o seu bonequinho: anda até o agente e entrega a ordem
 src/integracao.js       HTTP/SSE, WebSocket, postMessage, ordens e modo demo
 src/main.js             cena 3D, câmera e painel
+src/configuracao.js     janelas Equipe (trocar IA) e Relatório
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

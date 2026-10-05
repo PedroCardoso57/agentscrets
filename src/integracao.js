@@ -188,5 +188,5 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     else aoConexao('aguardando status', false);
   })();
 
-  return { enviarOrdem, cumprirNaSimulacao };
+  return { enviarOrdem, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
 }
