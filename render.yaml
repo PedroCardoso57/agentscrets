@@ -6,7 +6,7 @@ services:
     name: agentscrets
     runtime: node
     plan: starter
-    buildCommand: "true"
+    buildCommand: npm ci --omit=dev
     startCommand: node servidor.js
     healthCheckPath: /saude
     envVars:

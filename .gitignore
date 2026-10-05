@@ -4,3 +4,4 @@ node_modules/
 motores.json
 __pycache__/
 dados/
+.env

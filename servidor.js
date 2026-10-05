@@ -12,6 +12,8 @@
 //   ESCRITORIO_TOKEN  token dos motores (Authorization: Bearer ...); padrão = a senha
 //   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
 //   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
+//   MOTORES_ARQUIVO   caminho do motores.json (padrão ./motores.json)
+//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   chaves das IAs dos motores embutidos
 //
 // Status (motor → escritório):
 //   POST /api/status                 {"id":"redator","status":"trabalhando","tarefa":"..."}
@@ -20,14 +22,15 @@
 //   POST /api/ordens                 {"para":"redator" | "todos","texto":"..."}      (a página usa)
 //   GET  /api/ordens/pendentes?agente=redator   → ordens novas para o motor (marca como entregues)
 //   POST /api/ordens/:id/resposta    {"agente":"redator","texto":"Feito!","status":"concluido"}
-//   ou, em vez de consultar, configure um webhook por agente em motores.json
-//   (veja motores.exemplo.json) e o servidor faz POST da ordem para o seu motor.
+//   ou configure o agente em motores.json (veja motores.exemplo.json): o próprio
+//   servidor chama a IA dele (Claude, OpenAI, Gemini, API compatível) ou um webhook.
 
 import http from 'node:http';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { criarMotores } from './motores/index.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -145,37 +148,18 @@ function registrarResposta(ordem, agente, texto) {
   ordem.respostas.push({ agente, texto: String(texto).slice(0, 2000), em: new Date().toISOString() });
 }
 
-async function lerWebhooks() {
-  try {
-    return JSON.parse(process.env.MOTORES_JSON || (await readFile(join(RAIZ, 'motores.json'), 'utf8')));
-  } catch { return {}; }
+// Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
+function criarOrdem({ para, texto, de = 'chefe', contexto }) {
+  const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
+  if (contexto) ordem.contexto = contexto.slice(0, 4000);
+  ordens.push(ordem);
+  if (ordens.length > MAX_ORDENS) ordens.shift();
+  transmitir('ordem', ordem);
+  motores.despachar(ordem);
+  return ordem;
 }
 
-// Se o agente tiver webhook em motores.json, entrega a ordem na hora.
-async function entregarPorWebhook(ordem) {
-  const motores = await lerWebhooks();
-  const alvos = ordem.para === 'todos' ? Object.keys(motores) : [ordem.para];
-  for (const agente of alvos) {
-    const url = motores[agente]?.webhook;
-    if (!url) continue;
-    try {
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ordem: { id: ordem.id, para: ordem.para, texto: ordem.texto, criadaEm: ordem.criadaEm }, agente }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      marcarEntregue(ordem, agente);
-      // o motor pode responder na hora: {"resposta": "..."}
-      const corpo = await r.json().catch(() => null);
-      if (corpo && typeof corpo.resposta === 'string') registrarResposta(ordem, agente, corpo.resposta);
-    } catch (erro) {
-      console.warn(`[ordem ${ordem.id}] webhook de "${agente}" falhou: ${erro.message}`);
-    }
-  }
-  atualizarOrdem(ordem);
-}
+const motores = criarMotores({ raiz: RAIZ, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
 
 // ---------- rotas ----------
 
@@ -227,13 +211,7 @@ async function atender(req, res) {
     const texto = typeof dados.texto === 'string' ? dados.texto.trim() : '';
     if (!texto) return enviarJSON(res, 400, { erro: 'campo "texto" obrigatório' });
     if (typeof dados.para !== 'string' || !dados.para) return enviarJSON(res, 400, { erro: 'campo "para" obrigatório (id do agente ou "todos")' });
-    const ordem = { id: randomUUID().slice(0, 8), para: dados.para, texto: texto.slice(0, 2000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
-    ordens.push(ordem);
-    if (ordens.length > MAX_ORDENS) ordens.shift();
-    transmitir('ordem', ordem);
-    enviarJSON(res, 201, ordem);
-    entregarPorWebhook(ordem);
-    return;
+    return enviarJSON(res, 201, criarOrdem({ para: dados.para, texto: texto.slice(0, 2000) }));
   }
 
   if (rota === '/api/ordens' && req.method === 'GET') return enviarJSON(res, 200, ordens.slice(-50));
@@ -243,7 +221,7 @@ async function atender(req, res) {
     if (!agente) return enviarJSON(res, 400, { erro: 'informe ?agente=<id>' });
     const novas = ordens.filter((o) => (o.para === agente || o.para === 'todos') && !o.entregue.includes(agente));
     for (const o of novas) { marcarEntregue(o, agente); atualizarOrdem(o); }
-    return enviarJSON(res, 200, novas.map(({ id, para, texto, criadaEm }) => ({ id, para, texto, criadaEm })));
+    return enviarJSON(res, 200, novas.map(({ id, para, de, texto, contexto, criadaEm }) => ({ id, para, de, texto, contexto, criadaEm })));
   }
 
   const resposta = rota.match(/^\/api\/ordens\/([\w-]+)\/resposta$/);
@@ -273,7 +251,7 @@ async function atender(req, res) {
   // arquivos estáticos
   // não expõe motores.json (URLs internas), os dados salvos nem arquivos ocultos como .git
   const partes = rota.split('/');
-  if (rota === '/motores.json' || partes[1] === 'dados' || partes.some((p) => p.startsWith('.'))) { res.writeHead(404); return res.end(); }
+  if (rota === '/motores.json' || ['dados', 'node_modules'].includes(partes[1]) || partes.some((p) => p.startsWith('.'))) { res.writeHead(404); return res.end(); }
   const caminho = normalize(join(RAIZ, rota === '/' ? 'index.html' : decodeURIComponent(rota)));
   if (!caminho.startsWith(RAIZ)) { res.writeHead(403); return res.end(); }
   try {
@@ -295,6 +273,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 }
 
 await carregar();
+motores.iniciar(estado);
 servidor.listen(PORTA, HOST, () => {
   console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);
   console.log(`Status:  POST /api/status  {"id","status","tarefa"}`);

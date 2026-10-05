@@ -1,9 +1,8 @@
-# Escritório 24h em qualquer servidor com Docker:
-#   docker build -t agentscrets .
-#   docker run -d --name escritorio --restart unless-stopped -p 8787:8787 \
-#     -e ESCRITORIO_SENHA=troque-esta-senha -v escritorio-dados:/app/dados agentscrets
+# Escritório 24h num VPS — o jeito mais fácil é o docker-compose.yml (veja o README).
 FROM node:22-alpine
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY . .
 ENV HOST=0.0.0.0 PORTA=8787 DADOS_DIR=/app/dados NODE_ENV=production
 EXPOSE 8787
