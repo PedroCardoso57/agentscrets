@@ -1,0 +1,81 @@
+:root {
+  --fundo: #1d2230;
+  --painel: rgba(20, 24, 34, 0.86);
+  --texto: #eef1f7;
+  --suave: #9aa4b8;
+  --borda: rgba(255, 255, 255, 0.08);
+  --ocioso: #8e99ad;
+  --trabalhando: #3fb27f;
+  --aguardando: #e0b23c;
+  --concluido: #4c8dff;
+  --erro: #e5484d;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#cena { position: fixed; inset: 0; }
+
+#topo {
+  position: fixed;
+  top: 12px; left: 16px; right: 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  pointer-events: none;
+}
+#topo h1 { margin: 0; font-size: 18px; letter-spacing: .5px; text-shadow: 0 1px 4px #0008; }
+#topo h1 span { font-weight: 400; color: var(--suave); font-size: 13px; margin-left: 8px; }
+#conexao {
+  pointer-events: auto;
+  font-size: 12px; padding: 4px 10px; border-radius: 99px;
+  background: var(--painel); border: 1px solid var(--borda); color: var(--aguardando);
+}
+#conexao.online { color: var(--trabalhando); }
+
+#painel {
+  position: fixed;
+  top: 52px; right: 16px; width: 270px;
+  max-height: calc(100% - 68px); overflow-y: auto;
+  background: var(--painel); border: 1px solid var(--borda); border-radius: 12px;
+  padding: 12px; backdrop-filter: blur(6px);
+}
+#painel h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--suave); }
+#lista-agentes { list-style: none; margin: 0; padding: 0; }
+#lista-agentes li {
+  display: grid; grid-template-columns: 10px 1fr; gap: 2px 8px; align-items: center;
+  padding: 8px; border-radius: 8px; cursor: pointer;
+}
+#lista-agentes li:hover, #lista-agentes li.foco { background: rgba(255, 255, 255, 0.06); }
+#lista-agentes .bolinha { width: 10px; height: 10px; border-radius: 50%; }
+#lista-agentes .nome { font-size: 14px; font-weight: 600; }
+#lista-agentes .nome small { font-weight: 400; color: var(--suave); }
+#lista-agentes .tarefa { grid-column: 2; font-size: 12px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dica { font-size: 11px; color: var(--suave); margin: 8px 0 0; }
+
+/* Etiquetas 3D (CSS2DRenderer) */
+.etiqueta { display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.etiqueta .balao {
+  max-width: 180px; padding: 4px 8px; border-radius: 8px;
+  font-size: 11px; line-height: 1.3; text-align: center;
+  background: #fff; color: #1d2230; box-shadow: 0 2px 6px #0005;
+  opacity: 0; transform: translateY(4px); transition: opacity .3s, transform .3s;
+}
+.etiqueta .balao.visivel { opacity: 1; transform: none; }
+.etiqueta .balao.erro { background: var(--erro); color: #fff; }
+.etiqueta .placa {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+  background: var(--painel); border: 1px solid var(--borda); white-space: nowrap;
+}
+.etiqueta .placa i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+
+@media (max-width: 640px) {
+  #painel { top: auto; bottom: 12px; left: 16px; right: 16px; width: auto; max-height: 36%; }
+  .etiqueta .balao { display: none; }
+}

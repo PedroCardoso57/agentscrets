@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agentscrets — Escritório 3D</title>
+  <link rel="stylesheet" href="src/estilo.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.min.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="cena"></div>
+
+  <header id="topo">
+    <h1>agentscrets <span>escritório de agentes de IA</span></h1>
+    <div id="conexao" title="Origem dos status">● demo</div>
+  </header>
+
+  <aside id="painel">
+    <h2>Equipe</h2>
+    <ul id="lista-agentes"></ul>
+    <p class="dica">Clique num agente para focar a câmera. Arraste para girar, role para dar zoom.</p>
+  </aside>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
