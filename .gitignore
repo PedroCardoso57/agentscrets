@@ -3,3 +3,4 @@ node_modules/
 # configuração local dos webhooks dos motores (copie de motores.exemplo.json)
 motores.json
 __pycache__/
+dados/

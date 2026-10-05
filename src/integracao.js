@@ -171,9 +171,9 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     const simulando = atual.length === 0 && params.get('demo') !== '0';
     if (simulando) iniciarDemo();
     const fonte = new EventSource('api/eventos');
-    fonte.onopen = () => aoConexao(demo ? 'servidor local · demo até chegar status' : 'servidor local', true);
+    fonte.onopen = () => aoConexao(demo ? 'servidor · demo até chegar status' : 'servidor conectado', true);
     fonte.onmessage = (e) => {
-      try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor local', true); processar(dados); } catch { /* ignora */ }
+      try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.onerror = () => aoConexao('reconectando…', false);

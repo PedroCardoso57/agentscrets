@@ -1,0 +1,22 @@
+# Deploy no Render (render.com → New → Blueprint → escolha este repositório).
+# O plano grátis do Render "dorme" sem acesso; para ficar 24h use um plano pago
+# (o disco abaixo, que guarda as ordens entre reinícios, também exige plano pago).
+services:
+  - type: web
+    name: agentscrets
+    runtime: node
+    plan: starter
+    buildCommand: "true"
+    startCommand: node servidor.js
+    healthCheckPath: /saude
+    envVars:
+      - key: ESCRITORIO_SENHA
+        generateValue: true   # o Render cria uma senha; veja em Environment
+      - key: DADOS_DIR
+        value: /var/data
+      - key: NODE_VERSION
+        value: "22"
+    disk:
+      name: dados
+      mountPath: /var/data
+      sizeGB: 1

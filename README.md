@@ -20,6 +20,61 @@ node exemplos/simular-motores.js
 
 Controles: arraste para girar, role para dar zoom, clique num agente no painel para focar nele, `Esc` para ver o escritório inteiro.
 
+## Deixando no ar 24h
+
+O `node servidor.js` só fica no ar enquanto o terminal estiver aberto. Para rodar o tempo todo, escolha onde ele vai morar:
+
+| Onde | Bom para | Como |
+|---|---|---|
+| **Render** (nuvem) | Acessar de qualquer lugar sem cuidar de servidor | `render.yaml` pronto |
+| **VPS** (Hetzner, DigitalOcean, Contabo…) com Docker | Mais barato a longo prazo, controle total | `Dockerfile` pronto |
+| **Seu computador** com PM2 | Motores rodando na mesma máquina | `ecosystem.config.cjs` pronto |
+
+Em todos os casos, o servidor:
+- **exige senha** quando fica acessível pela rede (`ESCRITORIO_SENHA`); o navegador pede a senha uma vez. Sem ela, ele se recusa a abrir;
+- **salva status e ordens em disco** (`DADOS_DIR`, padrão `./dados`) e recarrega ao reiniciar;
+- tem a rota **`/saude`** para a hospedagem checar se está vivo, e reinicia sozinho se cair (pela hospedagem, Docker ou PM2).
+
+### Render
+
+1. Em [render.com](https://render.com): **New → Blueprint** e escolha este repositório. O `render.yaml` configura tudo.
+2. Em **Environment**, copie a `ESCRITORIO_SENHA` gerada (ou troque por uma sua).
+3. Abra a URL `https://<nome>.onrender.com` e entre com qualquer usuário + essa senha.
+
+O plano grátis do Render desliga o serviço quando ninguém acessa e não guarda arquivos entre reinícios; para 24h de verdade e histórico salvo, use um plano pago (o `render.yaml` já pede o `starter` com disco).
+
+### VPS com Docker
+
+```bash
+git clone https://github.com/PedroCardoso57/agentscrets && cd agentscrets
+docker build -t agentscrets .
+docker run -d --name escritorio --restart unless-stopped -p 8787:8787 \
+  -e ESCRITORIO_SENHA=troque-esta-senha \
+  -v escritorio-dados:/app/dados agentscrets
+```
+
+`--restart unless-stopped` religa o escritório se ele cair ou se o VPS reiniciar. Para ter HTTPS (recomendado, a senha trafega no cabeçalho), coloque um proxy na frente, como o [Caddy](https://caddyserver.com): `caddy reverse-proxy --from escritorio.seudominio.com --to localhost:8787`.
+
+### Seu computador com PM2
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save && pm2 startup    # volta sozinho quando o computador liga
+```
+
+Fica disponível só nesta máquina (`http://localhost:8787`), sem senha. Para abrir em outros aparelhos da casa, descomente `HOST` no `ecosystem.config.cjs` e defina `ESCRITORIO_SENHA`.
+
+### Conectando os motores ao escritório na nuvem
+
+Os motores precisam do endereço e do token (por padrão, o token é a própria senha; para separar, defina `ESCRITORIO_TOKEN`):
+
+```bash
+ESCRITORIO_URL=https://seu-escritorio.onrender.com ESCRITORIO_TOKEN=sua-senha node exemplos/simular-motores.js
+```
+
+Em qualquer linguagem, mande o cabeçalho `Authorization: Bearer <token>` em todas as chamadas. Os webhooks do `motores.json` podem ir na variável `MOTORES_JSON` (o conteúdo do arquivo), já que o arquivo não vai para o git.
+
 ## O que cada bonequinho faz
 
 | Estado | Comportamento |
@@ -136,7 +191,7 @@ iframe.contentWindow.postMessage({ escritorio: { id: 'revisor', status: 'aguarda
 
 ### Segurança
 
-O servidor só aceita conexões desta máquina (`127.0.0.1`). Quem acessa a página pode dar ordens às suas IAs, então só use `HOST=0.0.0.0` numa rede de confiança ou atrás de um proxy com login.
+Rodando em casa, o servidor só aceita conexões desta máquina (`127.0.0.1`). Quem acessa a página pode dar ordens às suas IAs, por isso, ao abrir para a rede ou a internet, a senha (`ESCRITORIO_SENHA`) é obrigatória. Use HTTPS na internet (o Render já dá; num VPS, use um proxy como o Caddy).
 
 ### Parâmetros da URL
 
@@ -149,6 +204,7 @@ O servidor só aceita conexões desta máquina (`127.0.0.1`). Quem acessa a pág
 index.html              página
 servidor.js             serve a página, recebe status e entrega ordens (Node, sem dependências)
 motores.exemplo.json    modelo de webhooks dos motores (copie para motores.json)
+Dockerfile, render.yaml, ecosystem.config.cjs   para deixar no ar 24h
 src/agentes.js          equipe e estados
 src/escritorio.js       sala, mesas, monitores e quadro branco
 src/boneco.js           bonequinho e suas animações

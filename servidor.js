@@ -4,8 +4,14 @@
 // Sem dependências — só Node 18+.
 //
 //   node servidor.js            → http://localhost:8787
-//   PORTA=3000 node servidor.js
-//   HOST=0.0.0.0 node servidor.js   (expõe na rede; por padrão só esta máquina acessa)
+//   PORTA=3000 node servidor.js     (também lê PORT, usado por Render/Railway/Fly)
+//   HOST=0.0.0.0 ESCRITORIO_SENHA=... node servidor.js   (na rede/internet: senha obrigatória)
+//
+// Variáveis para rodar 24h num servidor (veja "Deixando no ar 24h" no README):
+//   ESCRITORIO_SENHA  senha da página (o navegador pede; qualquer usuário)
+//   ESCRITORIO_TOKEN  token dos motores (Authorization: Bearer ...); padrão = a senha
+//   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
+//   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
 //
 // Status (motor → escritório):
 //   POST /api/status                 {"id":"redator","status":"trabalhando","tarefa":"..."}
@@ -18,14 +24,26 @@
 //   (veja motores.exemplo.json) e o servidor faz POST da ordem para o seu motor.
 
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
-const PORTA = Number(process.env.PORTA || 8787);
-const HOST = process.env.HOST || '127.0.0.1';
+const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
+// em hospedagens (que definem PORT) escuta em todas as interfaces; em casa, só nesta máquina
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+const SENHA = process.env.ESCRITORIO_SENHA || '';
+const TOKEN = process.env.ESCRITORIO_TOKEN || SENHA;
+const DADOS_DIR = process.env.DADOS_DIR || join(RAIZ, 'dados');
+const ARQUIVO_DADOS = join(DADOS_DIR, 'escritorio.json');
+const SO_LOCAL = ['127.0.0.1', 'localhost', '::1'].includes(HOST);
+
+if (!SO_LOCAL && !SENHA) {
+  console.error(`Recusando abrir em ${HOST} sem senha: qualquer pessoa poderia dar ordens às suas IAs.`);
+  console.error('Defina ESCRITORIO_SENHA (e, se quiser, ESCRITORIO_TOKEN para os motores).');
+  process.exit(1);
+}
 const STATUS_VALIDOS = ['ocioso', 'trabalhando', 'aguardando', 'concluido', 'erro'];
 const MAX_ORDENS = 200;
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.png': 'image/png' };
@@ -33,6 +51,58 @@ const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 const estado = new Map(); // id → último status recebido
 const ordens = [];        // histórico, da mais antiga para a mais nova
 const clientes = new Set();
+
+// ---------- acesso ----------
+
+function iguais(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+// Página: senha via HTTP Basic (o navegador pede uma vez e reaproveita).
+// Motores: "Authorization: Bearer <token>" (ou Basic com a senha).
+function autorizado(req) {
+  if (!SENHA) return true;
+  const [tipo, valor = ''] = (req.headers.authorization || '').split(' ');
+  if (tipo === 'Bearer') return iguais(valor, TOKEN);
+  if (tipo === 'Basic') {
+    const decodificado = Buffer.from(valor, 'base64').toString();
+    return iguais(decodificado.slice(decodificado.indexOf(':') + 1), SENHA);
+  }
+  return false;
+}
+
+// ---------- dados salvos em disco ----------
+
+let salvarTimer = null;
+function agendarSalvar() {
+  clearTimeout(salvarTimer);
+  salvarTimer = setTimeout(salvar, 1000);
+}
+
+async function salvar() {
+  clearTimeout(salvarTimer);
+  try {
+    await mkdir(DADOS_DIR, { recursive: true });
+    const tmp = `${ARQUIVO_DADOS}.tmp`;
+    await writeFile(tmp, JSON.stringify({ estado: [...estado.values()], ordens }));
+    await rename(tmp, ARQUIVO_DADOS); // troca atômica: não corrompe se cair no meio
+  } catch (erro) {
+    console.error('Não consegui salvar os dados:', erro.message);
+  }
+}
+
+async function carregar() {
+  try {
+    const dados = JSON.parse(await readFile(ARQUIVO_DADOS, 'utf8'));
+    for (const s of dados.estado || []) estado.set(s.id, s);
+    ordens.push(...(dados.ordens || []).slice(-MAX_ORDENS));
+    console.log(`Dados carregados: ${estado.size} agentes, ${ordens.length} ordens.`);
+  } catch (erro) {
+    if (erro.code !== 'ENOENT') console.error('Não consegui ler os dados salvos:', erro.message);
+  }
+}
 
 function enviarJSON(res, codigo, dados) {
   res.writeHead(codigo, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -49,6 +119,7 @@ async function lerCorpo(req) {
 }
 
 function transmitir(evento, dados) {
+  agendarSalvar(); // tudo que é transmitido mudou o estado
   const linha = (evento ? `event: ${evento}\n` : '') + `data: ${JSON.stringify(dados)}\n\n`;
   for (const c of clientes) c.write(linha);
 }
@@ -75,7 +146,9 @@ function registrarResposta(ordem, agente, texto) {
 }
 
 async function lerWebhooks() {
-  try { return JSON.parse(await readFile(join(RAIZ, 'motores.json'), 'utf8')); } catch { return {}; }
+  try {
+    return JSON.parse(process.env.MOTORES_JSON || (await readFile(join(RAIZ, 'motores.json'), 'utf8')));
+  } catch { return {}; }
 }
 
 // Se o agente tiver webhook em motores.json, entrega a ordem na hora.
@@ -107,12 +180,31 @@ async function entregarPorWebhook(ordem) {
 // ---------- rotas ----------
 
 const servidor = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  try {
+    await atender(req, res);
+  } catch (erro) {
+    // um erro numa requisição não pode derrubar o escritório
+    console.error(`[${req.method} ${req.url}]`, erro);
+    if (!res.headersSent) enviarJSON(res, 500, { erro: 'erro interno' });
+    else res.end();
+  }
+});
+
+async function atender(req, res) {
+  const url = new URL(req.url, 'http://escritorio');
   const rota = url.pathname;
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' });
     return res.end();
+  }
+
+  // checagem de saúde para a hospedagem (sem senha, sem dados)
+  if (rota === '/saude') return enviarJSON(res, 200, { ok: true, ligadoHa: Math.round(process.uptime()) });
+
+  if (!autorizado(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="agentscrets", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Senha necessária.');
   }
 
   if (rota === '/api/status' && req.method === 'POST') {
@@ -179,8 +271,9 @@ const servidor = http.createServer(async (req, res) => {
   }
 
   // arquivos estáticos
-  // não expõe motores.json (URLs internas) nem arquivos ocultos como .git
-  if (rota === '/motores.json' || rota.split('/').some((p) => p.startsWith('.'))) { res.writeHead(404); return res.end(); }
+  // não expõe motores.json (URLs internas), os dados salvos nem arquivos ocultos como .git
+  const partes = rota.split('/');
+  if (rota === '/motores.json' || partes[1] === 'dados' || partes.some((p) => p.startsWith('.'))) { res.writeHead(404); return res.end(); }
   const caminho = normalize(join(RAIZ, rota === '/' ? 'index.html' : decodeURIComponent(rota)));
   if (!caminho.startsWith(RAIZ)) { res.writeHead(403); return res.end(); }
   try {
@@ -190,10 +283,20 @@ const servidor = http.createServer(async (req, res) => {
   } catch {
     res.writeHead(404); res.end('não encontrado');
   }
-});
+}
 
+// ao ser desligado (deploy, reinício), salva antes de sair
+for (const sinal of ['SIGTERM', 'SIGINT']) {
+  process.on(sinal, async () => {
+    console.log(`Recebi ${sinal}, salvando e encerrando…`);
+    await salvar();
+    process.exit(0);
+  });
+}
+
+await carregar();
 servidor.listen(PORTA, HOST, () => {
-  console.log(`Escritório aberto em http://localhost:${PORTA}`);
+  console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);
   console.log(`Status:  POST /api/status  {"id","status","tarefa"}`);
   console.log(`Ordens:  GET  /api/ordens/pendentes?agente=<id>  ·  POST /api/ordens/<id>/resposta`);
 });

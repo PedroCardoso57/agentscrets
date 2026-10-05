@@ -4,20 +4,28 @@ Fica consultando as ordens que o chefe manda para o agente, executa e responde.
 Troque `executar` pela chamada da sua IA.
 
     python exemplos/motor_exemplo.py redator
+
+Escritório na nuvem com senha:
+    ESCRITORIO_URL=https://seu-escritorio.onrender.com ESCRITORIO_TOKEN=... python exemplos/motor_exemplo.py redator
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
 
-ESCRITORIO = "http://localhost:8787"
+ESCRITORIO = os.environ.get("ESCRITORIO_URL", "http://localhost:8787")
+TOKEN = os.environ.get("ESCRITORIO_TOKEN")  # necessário se o escritório tiver senha
 AGENTE = sys.argv[1] if len(sys.argv) > 1 else "redator"
 
 
 def api(caminho, corpo=None):
     dados = None if corpo is None else json.dumps(corpo).encode()
-    req = urllib.request.Request(ESCRITORIO + caminho, data=dados, headers={"Content-Type": "application/json"})
+    cabecalhos = {"Content-Type": "application/json"}
+    if TOKEN:
+        cabecalhos["Authorization"] = f"Bearer {TOKEN}"
+    req = urllib.request.Request(ESCRITORIO + caminho, data=dados, headers=cabecalhos)
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
 

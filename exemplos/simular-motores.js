@@ -7,13 +7,18 @@
 //
 //   node servidor.js                     (em um terminal)
 //   node exemplos/simular-motores.js     (em outro)
+//
+// Escritório na nuvem com senha:
+//   ESCRITORIO_URL=https://seu-escritorio.onrender.com ESCRITORIO_TOKEN=... node exemplos/simular-motores.js
 
 const URL_ESCRITORIO = process.env.ESCRITORIO_URL || 'http://localhost:8787';
+const TOKEN = process.env.ESCRITORIO_TOKEN; // necessário se o escritório tiver senha
+const CABECALHOS = { 'Content-Type': 'application/json', ...(TOKEN && { Authorization: `Bearer ${TOKEN}` }) };
 
 async function api(caminho, corpo) {
-  const r = await fetch(`${URL_ESCRITORIO}${caminho}`, corpo === undefined ? {} : {
+  const r = await fetch(`${URL_ESCRITORIO}${caminho}`, corpo === undefined ? { headers: CABECALHOS } : {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: CABECALHOS,
     body: JSON.stringify(corpo),
   });
   if (!r.ok) throw new Error(`${caminho}: ${await r.text()}`);
