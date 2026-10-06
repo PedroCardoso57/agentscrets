@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/CSS2DRenderer.js';
 import { AGENTES, CHEFE, STATUS } from './agentes.js';
-import { MESA, criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro, definirMarcaSala, definirClientesMural, atualizarRelogio, fatorDia, aplicarDiaNoite } from './escritorio.js';
+import { MESA, criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro, definirMarcaSala, definirClientesMural, atualizarRelogio, fatorDia, aplicarDiaNoite, definirPainelTV, animarAmbiente } from './escritorio.js';
 import { Boneco } from './boneco.js';
 import { Chefe } from './chefe.js';
 import { Cranio } from './cranio.js';
@@ -13,6 +13,7 @@ import { criarJanelaEntregas } from './entregas.js';
 import { criarGestao } from './gestao.js';
 import { criarInterface } from './interface.js';
 import { Efeitos } from './efeitos.js';
+import { Vida } from './vida.js';
 
 // ---------- renderização ----------
 
@@ -60,6 +61,8 @@ const ui = criarInterface({
 
 const efeitos = new Efeitos(cena);
 
+
+
 // pontos de onde saem e chegam as folhas de entrega
 const mesaDe = (id) => estacoes.get(id)?.grupo.localToWorld(new THREE.Vector3(0.35, MESA.altura + 0.12, MESA.zCentro - 0.1));
 const mesaDoChefe = () => chefe.grupo.localToWorld(new THREE.Vector3(-0.35, MESA.altura + 0.06, MESA.zCentro - 0.1));
@@ -78,6 +81,20 @@ function atualizarHorario() {
 
 const agentes = AGENTES.map((a) => ({ ...a }));
 const estacoes = new Map(); // id → { agente, boneco, estacao, estado, tarefa, etiqueta, item }
+
+// pausas: quem fica sem trabalho levanta, pega água/café, conversa, senta no sofá…
+const vida = new Vida({
+  estacoes,
+  falar(id, texto) {
+    const e = estacoes.get(id);
+    if (!e || e.estado !== 'ocioso') return;
+    const balao = e.etiqueta.element.querySelector('.balao');
+    balao.textContent = texto;
+    balao.classList.add('visivel');
+    clearTimeout(e.timerPapo);
+    e.timerPapo = setTimeout(() => { if (e.estado === 'ocioso') balao.classList.remove('visivel'); }, 3800);
+  },
+});
 let sala = null;
 
 // o seu bonequinho de chefe
@@ -110,6 +127,7 @@ function montar() {
 
   sala = criarSala(agentes.length);
   cena.add(sala.grupo);
+  vida.definirSala(sala);
   const { largura, profundidade, centro } = sala;
   sol.position.set(centro.x + 8, 14, centro.z + 10);
   sol.target.position.copy(centro);
@@ -221,6 +239,9 @@ function atualizarHoje() {
   const ordens = [...ordensVistas.values()].map((v) => v.ordem);
   ui.atualizarKpis({ ordens, trabalhando: [...estacoes.values()].filter((x) => x.estado === 'trabalhando').length });
   ui.contador('ordens', ordens.filter((o) => o.estado !== 'respondida').length);
+  // a TV da sala de reunião mostra os mesmos números
+  const kpi = (n) => document.querySelector(`[data-kpi="${n}"]`)?.textContent || '0';
+  definirPainelTV({ entregas: kpi('entregas'), trabalhando: kpi('trabalhando'), erros: kpi('erros'), projetos: listaClientes.length, proxima: `${kpi('rotina')} ${kpi('rotina-nome') === 'próxima rotina' ? '' : kpi('rotina-nome')}`.trim() });
 }
 
 // ---------- câmera ----------
@@ -228,7 +249,8 @@ function atualizarHoje() {
 let animacaoCamera = null;
 function enquadrarTudo() {
   const { centro, largura, profundidade } = sala;
-  irPara(new THREE.Vector3(centro.x - 1, 0.8, centro.z), new THREE.Vector3(centro.x + largura * 0.35, Math.max(largura, profundidade) * 0.62, centro.z + profundidade * 0.85));
+  // mira um pouco à direita do centro: a copa e a área de reunião (onde a equipe faz as pausas) ficam desse lado
+  irPara(new THREE.Vector3(centro.x + 1.2, 0.6, centro.z + 0.3), new THREE.Vector3(centro.x + largura * 0.3, Math.max(largura, profundidade) * 0.7, centro.z + profundidade * 1.05));
 }
 
 // câmera na mesa do chefe, de frente para a bola de cristal
@@ -377,6 +399,7 @@ function renderizarOrdens() {
       o.consolidacao ? '🏁 entrega final' : null,
       o.texto.startsWith('Replanejar:') ? '🔀 replanejamento' : null,
       o.origem?.rotina ? '🗓 rotina' : null,
+      o.origem?.autopiloto ? '🤖 piloto automático' : null,
       o.origem?.telegram ? '✈ Telegram' : null,
     ].filter(Boolean);
     if (marcas.length) li.querySelector('.cab').after(Object.assign(document.createElement('div'), { className: 'marcas', textContent: marcas.join(' · ') }));
@@ -549,7 +572,9 @@ function aoOrdem(ordem, { nova }) {
       ],
     });
   });
-  if (nova && vista === undefined && (ordem.origem?.rotina || ordem.origem?.telegram) && (!ordem.de || ordem.de === 'chefe')) {
+  if (nova && vista === undefined && ordem.origem?.autopiloto && !ordem.pai && !ordem.consolidacao) {
+    ui.avisar({ icone: '🤖', titulo: 'Piloto automático', texto: `O Tech Lead está decidindo o próximo passo: ${nomeCliente(ordem.cliente)}`, cor: corDe(ordem.para), duracao: 6000 });
+  } else if (nova && vista === undefined && (ordem.origem?.rotina || ordem.origem?.telegram) && (!ordem.de || ordem.de === 'chefe')) {
     ui.avisar({ icone: ordem.origem.rotina ? '⏰' : '✈️', titulo: ordem.origem.rotina ? 'Rotina disparou' : 'Ordem pelo Telegram', texto: `${nomeDe(ordem.para)}: ${ordem.texto}`, cor: corDe(ordem.para), duracao: 6000 });
     if (!cenaPausada && sala) {
       if (ordem.origem.rotina) efeitos.despertador(mesaDoChefe().add(new THREE.Vector3(0, 0.95, 0)), 'Rotina!');
@@ -713,6 +738,8 @@ function quadro() {
 
   chefe.atualizar(dt, t);
   efeitos.atualizar(dt, t, camera, (id) => estacoes.get(id)?.estado);
+  vida.atualizar(dt, t, cenaPausada);
+  animarAmbiente(dt, t);
   if (cranio.grupo.visible) cranio.atualizar(dt, t);
   if (redesenhar) desenharTela(chefe.estacao.tela, chefe.agente, chefe.digitando ? 'trabalhando' : 'ocioso', t);
 

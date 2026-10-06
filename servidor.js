@@ -40,6 +40,7 @@ import { criarTelegram } from './motores/telegram.js';
 import { criarClientes } from './motores/clientes.js';
 import { criarRotinas, ontem } from './motores/rotinas.js';
 import { criarSupervisor } from './motores/supervisor.js';
+import { criarAutopiloto } from './motores/autopiloto.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -317,6 +318,17 @@ const supervisor = criarSupervisor({
     documentacao?.registrar(texto);
   },
 });
+const autopiloto = criarAutopiloto({
+  dadosDir: DADOS_DIR,
+  ordens,
+  equipe: () => motores.equipe(),
+  clientes,
+  criarOrdem, // direto: o plano é do Tech Lead, sem passar pelo Crânio
+  docDe: (projeto) => documentacao.resumo(projeto).texto,
+  entregasDe: (projeto) => entregas.listar({ cliente: projeto }).itens,
+  planoAberto: (projeto) => supervisor.planoAberto(projeto),
+  avisar: (texto) => { transmitirSemSalvar('aviso', { texto }); telegram.avisar(texto); },
+});
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
   equipe: () => motores.equipe(),
@@ -428,6 +440,12 @@ async function atender(req, res) {
       transmitirSemSalvar('clientes', clientes.listar());
       return enviarJSON(res, 200, salvo);
     } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
+  // ---------- piloto automático do Tech Lead ----------
+  if (rota === '/api/autopiloto' && req.method === 'GET') return enviarJSON(res, 200, autopiloto.ver());
+  if (rota === '/api/autopiloto' && req.method === 'POST') {
+    try { return enviarJSON(res, 200, await autopiloto.configurar(await lerCorpo(req))); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
   }
 
   // ---------- rotinas ----------
@@ -575,7 +593,11 @@ async function atender(req, res) {
   if (!caminho.startsWith(RAIZ)) { res.writeHead(403); return res.end(); }
   try {
     const conteudo = await readFile(caminho);
-    res.writeHead(200, { 'Content-Type': TIPOS[extname(caminho)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': TIPOS[extname(caminho)] || 'application/octet-stream',
+      // a página sempre pega a versão nova depois de um deploy; só a biblioteca 3D (que não muda) fica em cache
+      'Cache-Control': partes[1] === 'vendor' ? 'public, max-age=604800' : 'no-cache, no-store, must-revalidate',
+    });
     res.end(conteudo);
   } catch {
     res.writeHead(404); res.end('não encontrado');
@@ -634,6 +656,8 @@ await entregas.carregar(ordens);
 telegram.iniciar();
 motores.iniciar(estado);
 supervisor.iniciar();
+await autopiloto.carregar();
+autopiloto.iniciar();
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {
   console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);

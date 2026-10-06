@@ -35,7 +35,9 @@ export class Boneco {
     this.rotFinal = null;  // para onde olhar ao chegar (null = padrão da mesa)
     this.posto = null;     // onde ficar depois da rota (null = cadeira ou quadro)
     this.velocidade = 1.4; // metros por segundo
-    this.gesto = null;     // 'apontar' | 'anunciar' — usado pelo chefe ao dar ordens
+    this.gesto = null;     // 'apontar' | 'anunciar' (chefe) · 'beber' | 'conversar' | 'olhar' | 'folhear' | 'relaxar' (pausas)
+    this.sentarNoDestino = false; // senta ao chegar (sofá, cadeira de reunião)
+    this.comCopo = false;
     this.atencaoAte = 0;   // até quando fica virado ouvindo o chefe
     this.atencaoGiro = 0;
 
@@ -72,6 +74,7 @@ export class Boneco {
     corpo.position.y = 0.3;
     corpo.scale.set(1, 1, 0.75);
     this.tronco.add(corpo);
+    this.corpo = corpo;
 
     // braços: ombro → cotovelo → mão
     this.bracos = {};
@@ -104,11 +107,13 @@ export class Boneco {
     cabelo.rotation.x = -0.35;
     this.pescoco.add(cabelo);
     const olho = mat('#1b1d22');
-    for (const lado of [-1, 1]) {
+    this.olhos = [-1, 1].map((lado) => {
       const o = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), olho);
       o.position.set(lado * 0.06, 0.18, 0.155);
       this.pescoco.add(o);
-    }
+      return o;
+    });
+    this.proximaPiscada = 1 + Math.random() * 4;
     this.boca = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 6, 12, Math.PI), mat('#7a2f2f'));
     this.boca.position.set(0, 0.1, 0.16);
     this.boca.rotation.z = Math.PI;
@@ -124,6 +129,12 @@ export class Boneco {
 
     this.criarAcessorios(agente.id);
     this.criarAderecos(agente.atividade);
+
+    // copo de café/água para as pausas (na mão direita)
+    this.copo = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.09, 12), mat('#f5f5f4'));
+    this.copo.position.set(0, -0.06, 0.05);
+    this.copo.visible = false;
+    this.bracos.dir.mao.add(this.copo);
   }
 
   // Acessórios por função: fone no Designer, óculos no QA e no Analista de requisitos,
@@ -310,6 +321,37 @@ export class Boneco {
         p.cabecaX = -0.25;
       }
     }
+    // pausas: o que o agente faz longe da mesa quando não há trabalho
+    const fala = Math.sin(t * 0.8 + this.semente * 7) > 0; // em conversa, um fala e o outro escuta
+    if (this.gesto === 'beber') {
+      p.emPe = 1; p.troncoX = 0; p.cabecaY = Math.sin(t * 0.4 + this.semente) * 0.3;
+      const gole = (t + this.semente * 5) % 6 < 1.2;
+      p.dir = gole ? { x: -2.2, abre: -0.3, cot: -2.2 } : { x: -0.85, abre: -0.1, cot: -1.5 };
+      p.esq = { x: 0.05, abre: 0.08, cot: -0.2 };
+      p.cabecaX = gole ? -0.25 : 0;
+    } else if (this.gesto === 'conversar') {
+      p.emPe = this.sentarNoDestino ? 0 : 1; p.troncoX = this.sentarNoDestino ? 0.05 : 0;
+      p.cabecaX = -0.05; p.cabecaY = Math.sin(t * 0.7 + this.semente) * 0.12;
+      p.dir = this.comCopo ? { x: -0.85, abre: -0.1, cot: -1.5 } : { x: -0.6 + (fala ? Math.sin(t * 5) * 0.25 : 0), abre: 0.2, cot: -1.2 };
+      p.esq = fala ? { x: -0.9 + Math.sin(t * 4 + 1) * 0.3, abre: 0.35, cot: -1.0 } : { x: -0.2, abre: 0.05, cot: -0.4 };
+      p.boca = fala ? Math.abs(Math.sin(t * 9)) : 0;
+      if (!fala && (t + this.semente) % 7 < 0.8) p.cabecaX = 0.15; // concorda com a cabeça
+    } else if (this.gesto === 'olhar') {
+      // mãos para trás, olhando a vista
+      p.emPe = 1; p.troncoX = -0.02;
+      p.esq = { x: 0.45, abre: -0.25, cot: -1.3 };
+      p.dir = { x: 0.45, abre: -0.25, cot: -1.3 };
+      p.cabecaY = Math.sin(t * 0.25 + this.semente) * 0.5; p.cabecaX = -0.1;
+    } else if (this.gesto === 'folhear') {
+      p.emPe = 1; p.troncoX = 0.05; p.cabecaX = 0.35;
+      p.dir = { x: -0.95, abre: -0.3, cot: -0.9 };
+      p.esq = (t + this.semente) % 5 < 0.6 ? { x: -1.1, abre: -0.6, cot: -1.0 } : { x: -0.95, abre: -0.3, cot: -0.9 };
+    } else if (this.gesto === 'relaxar') {
+      // jogado no sofá
+      p.emPe = 0; p.troncoX = -0.32; p.cabecaX = -0.2; p.cabecaY = Math.sin(t * 0.3 + this.semente) * 0.4;
+      p.esq = { x: -0.2, abre: 0.7, cot: -0.5 };
+      p.dir = this.comCopo ? { x: -0.85, abre: -0.1, cot: -1.5 } : { x: -0.2, abre: 0.7, cot: -0.5 };
+    }
     // gestos e atenção têm prioridade sobre a pose do estado
     if (this.gesto === 'apontar') {
       p.emPe = 1;
@@ -365,7 +407,8 @@ export class Boneco {
     if (naRota && dist < 0.05) this.rota.shift();
     const andando = dist > 0.03;
     this.parado = !andando;
-    const querEmPe = p.emPe || andando || this.rota.length || this.rotFinal !== null ? 1 : 0;
+    // ao chegar num lugar para sentar (sofá, reunião), não fica de pé por causa da direção final
+    const querEmPe = p.emPe || andando || this.rota.length || (this.rotFinal !== null && !this.sentarNoDestino) ? 1 : 0;
     this.emPe = L(this.emPe, querEmPe);
     let rotAlvo = this.rotFinal ?? (p.local === 'quadro' ? Math.PI : 0);
     if (this.emPe > 0.85 && andando) {
@@ -408,6 +451,13 @@ export class Boneco {
       b.cotovelo.rotation.x = L(b.cotovelo.rotation.x, alvo.cot);
     }
     this.boca.scale.y = L(this.boca.scale.y, 1 + p.boca * 0.6);
+    // pisca de vez em quando e respira devagar
+    this.proximaPiscada -= dt;
+    const piscando = this.proximaPiscada < 0.12;
+    if (this.proximaPiscada < 0) this.proximaPiscada = 2 + Math.random() * 4;
+    for (const o of this.olhos) o.scale.y = piscando ? 0.15 : 1;
+    this.corpo.scale.y = 1 + Math.sin(t * 1.7 + this.semente) * 0.015;
+    this.copo.visible = this.comCopo;
     this.boca.rotation.z = estado === 'erro' ? 0 : Math.PI; // sorriso ↔ boca triste
 
     const trabalhando = estado === 'trabalhando';
