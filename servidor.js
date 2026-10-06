@@ -260,7 +260,7 @@ let documentacao = null; // criada logo abaixo, depois dos motores
 const clientes = criarClientes({ dadosDir: DADOS_DIR });
 let repositorios = null; // criado logo abaixo (precisa do pedirAjuste)
 // lista de clientes para a página, com o endereço do repositório de cada projeto
-const clientesComRepo = () => clientes.listar().map((c) => ({ ...c, repo: repositorios?.repoDe(c.id)?.url || null }));
+const clientesComRepo = () => clientes.listar().map((c) => ({ ...c, repo: repositorios?.repoDe(c.id)?.url || null, producao: repositorios?.repoDe(c.id)?.producao || null }));
 const rotinas = criarRotinas({
   dadosDir: DADOS_DIR,
   disparar: (r) => ordemDoChefe({ para: r.para, texto: r.texto, cliente: r.cliente, origem: { rotina: r.id }, anexo: r.resumoOntem ? materialDoDia(ontem()) : undefined }),
@@ -304,27 +304,34 @@ const telegram = criarTelegram({
   clientes,
   rotinas: () => rotinas.listar(),
 });
-const entregas = criarEntregas({ dadosDir: DADOS_DIR, nomeCliente: (id) => clientes.nomeDe(id), aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
+const entregas = criarEntregas({ dadosDir: DADOS_DIR, nomeCliente: (id) => clientes.nomeDe(id), aoNova: (e, conteudo) => ordens.find((o) => o.id === e.ordemId)?.origem?.revisaoPR ? null : telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
 repositorios = criarRepositorios({
   dadosDir: DADOS_DIR,
   ordens,
   clientes,
   mudou: (ordem) => (ordem ? transmitir('ordem', ordem) : transmitirSemSalvar('clientes', clientesComRepo())),
-  pedirCorrecao: (dados) => pedirAjuste(dados), // CI falhou: o mesmo agente corrige no mesmo PR
+  pedirCorrecao: (dados) => pedirAjuste(dados), // CI falhou ou a revisão pediu mudanças: o mesmo agente corrige no mesmo PR
+  // CI verde: o QA (ou GITHUB_REVISOR) revisa o diff antes do merge
+  pedirRevisao: ({ cliente, agente, numero, url, texto, anexo }) => {
+    const cfg = motores.equipe();
+    const rev = process.env.GITHUB_REVISOR || process.env.REVISOR || (cfg.qa ? 'qa' : 'revisor');
+    if (!cfg[rev] || cfg[rev].provedor === 'webhook') return null;
+    return criarOrdem({ para: rev, de: 'chefe', cliente, texto, anexo, origem: { revisaoPR: { numero, url, agente } } });
+  },
   avisar: (texto) => { transmitirSemSalvar('aviso', { texto }); telegram.avisar(texto); },
   informar: (texto) => telegram.avisar(texto),
 });
 
 // O que os agentes recebem sobre o repositório do projeto: endereço, estrutura e como entregar arquivos.
-async function contextoCodigo(cliente) {
-  if (!repositorios.ativo()) return '';
+async function contextoCodigo(cliente, ordem) {
+  if (!repositorios.ativo() || ordem?.origem?.revisaoPR) return '';
   const repo = repositorios.repoDe(cliente);
   const estrutura = repo ? await repositorios.arvore(cliente) : '(repositório novo: será criado com a sua entrega)';
   return `Este projeto tem um repositório Git${repo ? ` (${repo.url})` : ''}. Tudo o que for arquivo do projeto (código, configuração, documentação), entregue COMPLETO, cada arquivo num bloco assim:
 \`\`\`ts arquivo: caminho/relativo/do/arquivo.ts
 conteúdo completo do arquivo
 \`\`\`
-Os arquivos viram um pull request e passam pelo CI (instalar, compilar e testar): ao criar um projeto, inclua o package.json (ou requirements.txt) com scripts de build e test, e testes das regras principais. Para alterar um arquivo existente, use o mesmo caminho e entregue o arquivo inteiro.
+Os arquivos viram um pull request, passam pelo CI (instalar, compilar e testar) e pela revisão de código do QA antes do merge: ao criar um projeto, inclua o package.json (ou requirements.txt) com scripts de build e test, e testes das regras principais. Nunca coloque senhas, chaves ou tokens no código: use variáveis de ambiente (e um .env.example). ${repo?.netlify ? `O projeto é publicado no Netlify (${repo.netlify.url}) e cada PR ganha um preview: o front-end precisa de "npm run build" gerando a pasta dist, ou de um netlify.toml na raiz com [build] command e publish certos (em monorepo, use base). Back-end com banco não roda no Netlify: use funções do Netlify ou deixe o back-end separado.` : 'Se o repositório estiver ligado a um serviço de deploy (Netlify, Cloudflare Pages), cada PR ganha um preview: mantenha o build funcionando (ex.: npm run build gerando a pasta de saída).'} Para alterar um arquivo existente, use o mesmo caminho e entregue o arquivo inteiro.
 
 Estrutura atual do repositório:
 ${estrutura}`;

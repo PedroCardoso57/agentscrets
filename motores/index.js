@@ -266,7 +266,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     let usado = c; // muda se a IA reserva precisar entrar
     const meta = () => ({ motor: rotulo(usado), ms: Date.now() - inicio }); // para o relatório comparar IAs
     try {
-      const codigo = ordem.cliente ? await contextoCodigo(ordem.cliente).catch(() => '') : '';
+      const codigo = ordem.cliente ? await contextoCodigo(ordem.cliente, ordem).catch(() => '') : '';
       const chamada = await chamarIA(c, { instrucoes: instrucoesDe(id, c, cfg, podeDelegar, ordem, codigo), pedido: pedidoDe(ordem), ordem, agente: id }, {
         cfg, aoEsperar: (tarefa) => registrarStatus({ id, status: 'aguardando', tarefa }),
       });

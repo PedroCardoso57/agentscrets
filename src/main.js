@@ -467,12 +467,13 @@ function renderizarOrdens() {
       }
       // código no GitHub: PR e estado do CI
       if (r.repo) {
-        const ESTADO_PR = { testando: '⏳ testando no CI', corrigindo: '🔧 CI falhou, corrigindo', mesclado: '✅ mesclado', aprovado: '✅ CI passou', falhou: '❌ CI falhando', conflito: '⚠️ conflito ao mesclar' };
+        const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito ao mesclar' };
         const linha = document.createElement('div');
         linha.className = 'pr-github';
         if (r.repo.url) {
           const a = Object.assign(document.createElement('a'), { href: r.repo.url, target: '_blank', rel: 'noopener', textContent: `🔀 PR #${r.repo.pr}` });
           linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
+          if (r.repo.preview) linha.append(' · ', Object.assign(document.createElement('a'), { href: r.repo.preview, target: '_blank', rel: 'noopener', textContent: '🔎 ver preview' }));
         } else linha.textContent = `⚠️ GitHub: ${r.repo.erro}`;
         resp.appendChild(linha);
       }
