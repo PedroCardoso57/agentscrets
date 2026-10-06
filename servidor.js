@@ -164,9 +164,10 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
-function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
+function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
+  if (origem) ordem.origem = origem; // ex.: { telegram: { chat, msg } } para responder no mesmo lugar
   if (decisao) {
     ordem.decisao = decisao; // como o Crânio (Laya) decidiu, com que certeza e urgência
     documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`);
@@ -193,8 +194,8 @@ function descreverDecisao(d, ordem) {
 
 // Toda decisão passa pelo Crânio: ordens com agente indicado (pelo chefe ou por
 // quem delega) são avaliadas por ele antes de existir. Sem o Laya, seguem direto.
-async function encaminhar({ para, texto, de = 'chefe', contexto }) {
-  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto });
+async function encaminhar({ para, texto, de = 'chefe', contexto, origem }) {
+  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem });
   let decisao;
   try {
     decisao = await decisor.avaliar(texto, motores.equipe(), para, de);
@@ -202,11 +203,26 @@ async function encaminhar({ para, texto, de = 'chefe', contexto }) {
     console.warn(`[crânio] ${erro.message}`);
     decisao = { por: 'Laya', modo: 'indisponivel', motivo: erro.message.slice(0, 120), agente: para };
   }
-  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao });
+  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem });
+}
+
+// Ordem do chefe (pela página ou pelo Telegram). para = id do agente, "todos" ou "auto" (o Laya escolhe).
+async function ordemDoChefe({ para, texto, origem }) {
+  texto = texto.slice(0, 2000);
+  if (para !== 'auto') return encaminhar({ para, texto, origem });
+  const decisao = await decisor.decidir(texto, motores.equipe());
+  return criarOrdem({ para: decisao.agente, texto, decisao, origem });
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
-const telegram = criarTelegram({ dadosDir: DADOS_DIR, nomeDe: (id) => id.charAt(0).toUpperCase() + id.slice(1) });
-const entregas = criarEntregas({ dadosDir: DADOS_DIR, aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo }) });
+const telegram = criarTelegram({
+  dadosDir: DADOS_DIR,
+  nomeDe: (id) => id.charAt(0).toUpperCase() + id.slice(1),
+  equipe: () => Object.keys(motores.equipe()),
+  status: (id) => estado.get(id),
+  cranioAtivo: () => decisor.ativo(),
+  aoOrdem: (dados) => ordemDoChefe(dados),
+});
+const entregas = criarEntregas({ dadosDir: DADOS_DIR, aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)) });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
@@ -267,11 +283,8 @@ async function atender(req, res) {
     const texto = typeof dados.texto === 'string' ? dados.texto.trim() : '';
     if (!texto) return enviarJSON(res, 400, { erro: 'campo "texto" obrigatório' });
     if (typeof dados.para !== 'string' || !dados.para) return enviarJSON(res, 400, { erro: 'campo "para" obrigatório (id do agente ou "todos")' });
-    if (dados.para !== 'auto') return enviarJSON(res, 201, await encaminhar({ para: dados.para, texto: texto.slice(0, 2000) }));
-    // "Automático": o Laya decide qual agente cuida do pedido
     try {
-      const decisao = await decisor.decidir(texto, motores.equipe());
-      return enviarJSON(res, 201, criarOrdem({ para: decisao.agente, texto: texto.slice(0, 2000), decisao }));
+      return enviarJSON(res, 201, await ordemDoChefe({ para: dados.para, texto }));
     } catch (erro) {
       console.error('[decisor]', erro.message);
       return enviarJSON(res, 502, { erro: `o Laya não conseguiu decidir: ${erro.message}` });
