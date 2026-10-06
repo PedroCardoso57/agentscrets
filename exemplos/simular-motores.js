@@ -40,12 +40,14 @@ async function executarComIA(id, pedido) {
 }
 
 const TAREFAS = {
-  orquestrador: ['Planejando a sprint', 'Distribuindo demandas'],
-  pesquisador: ['Pesquisando concorrentes', 'Lendo artigos do nicho'],
-  redator: ['Escrevendo legenda', 'Roteiro de Reels'],
-  designer: ['Criando carrossel', 'Editando thumbnail'],
-  programador: ['Integrando webhook', 'Corrigindo automação'],
-  revisor: ['Revisando legenda', 'Aprovando peças'],
+  orquestrador: ['Planejando a sprint', 'Definindo a arquitetura'],
+  requisitos: ['Escrevendo histórias de usuário', 'Mapeando regras de negócio'],
+  designer: ['Desenhando o dashboard', 'Prototipando telas'],
+  frontend: ['Montando a landing page', 'Criando a tela de pedidos'],
+  backend: ['Criando a API', 'Modelando o banco'],
+  qa: ['Revisando o pull request', 'Testando o login'],
+  devops: ['Fazendo deploy na VPS', 'Configurando backups'],
+  documentador: ['Escrevendo o README', 'Documentando a API'],
 };
 
 async function cumprirOrdem(id, ordem) {

@@ -13,17 +13,17 @@
 //   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
 //   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
 //   MOTORES_ARQUIVO   caminho do motores.json (padrão ./motores.json)
-//   DOCUMENTADOR      agente que mantém a documentação viva (padrão: redator); DOC_INTERVALO_MIN (padrão 3)
+//   DOCUMENTADOR      agente que mantém a documentação viva (padrão: documentador); DOC_INTERVALO_MIN (padrão 3)
 //   LAYA_URL          servidor do Laya, que decide o agente das ordens "Automático" (ex.: http://laya:8000)
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   chaves das IAs dos motores embutidos
 //
 // Status (motor → escritório):
-//   POST /api/status                 {"id":"redator","status":"trabalhando","tarefa":"..."}
+//   POST /api/status                 {"id":"backend","status":"trabalhando","tarefa":"..."}
 //
 // Ordens (chefe → motor):
-//   POST /api/ordens                 {"para":"redator" | "todos","texto":"..."}      (a página usa)
+//   POST /api/ordens                 {"para":"backend" | "todos","texto":"..."}      (a página usa)
 //   GET  /api/ordens/pendentes?agente=redator   → ordens novas para o motor (marca como entregues)
-//   POST /api/ordens/:id/resposta    {"agente":"redator","texto":"Feito!","status":"concluido"}
+//   POST /api/ordens/:id/resposta    {"agente":"backend","texto":"Feito!","status":"concluido"}
 //   ou configure o agente em motores.json (veja motores.exemplo.json): o próprio
 //   servidor chama a IA dele (Claude, OpenAI, Gemini, API compatível) ou um webhook.
 
@@ -39,6 +39,7 @@ import { criarEntregas } from './motores/entregas.js';
 import { criarTelegram } from './motores/telegram.js';
 import { criarClientes } from './motores/clientes.js';
 import { criarRotinas, ontem } from './motores/rotinas.js';
+import { criarSupervisor } from './motores/supervisor.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -147,8 +148,17 @@ function registrarStatus(item) {
 
 // ---------- ordens ----------
 
+const respostaFalhou = (r) => r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
+
 function atualizarOrdem(ordem) {
-  ordem.estado = ordem.respostas.length ? 'respondida' : ordem.entregue.length ? 'entregue' : 'pendente';
+  // 'falhou': algum destinatário está com a última resposta em erro (o supervisor tenta de novo)
+  const comErro = ordem.entregue.some((a) => {
+    const dele = ordem.respostas.filter((r) => r.agente === a);
+    return dele.length && !dele.some((r) => !respostaFalhou(r));
+  });
+  ordem.estado = ordem.reexecutando?.length ? 'entregue'
+    : comErro ? 'falhou'
+      : ordem.respostas.length ? 'respondida' : ordem.entregue.length ? 'entregue' : 'pendente';
   transmitir('ordem', ordem);
 }
 
@@ -159,23 +169,26 @@ function marcarEntregue(ordem, agente) {
 // extra: { motor, ms, erro } — de qual IA veio e quanto demorou, para o relatório
 function registrarResposta(ordem, agente, texto, extra = {}) {
   ordem.respostas.push({ agente, texto: String(texto).slice(0, 20000), em: new Date().toISOString(), ...extra });
+  if (ordem.reexecutando) ordem.reexecutando = ordem.reexecutando.filter((a) => a !== agente);
   // vira arquivo .md no arquivo de entregas
   entregas.registrar(ordem, ordem.respostas.length - 1).catch((erro) => console.error('[entregas]', erro.message));
   // vira evento da documentação viva (o trecho basta para o documentador resumir)
-  documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`);
+  documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`, ordem.cliente);
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
-function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, cliente, ajuste, anexo }) {
+function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, cliente, ajuste, anexo, pai, consolidacao }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
   if (anexo) ordem.anexo = anexo.slice(0, 60000); // material longo para o agente (ex.: o que foi feito ontem)
   if (origem) ordem.origem = origem; // ex.: { telegram: { chat, msg } } para responder no mesmo lugar
   if (cliente && clientes.existe(cliente)) ordem.cliente = cliente; // a ficha do cliente vai junto para o agente
   if (ajuste) ordem.ajuste = ajuste; // refazer uma entrega: { ordemId, indice, original, anterior }
+  if (pai) ordem.pai = pai; // tarefa de um plano do Orquestrador (o supervisor acompanha até o fim)
+  if (consolidacao) ordem.consolidacao = consolidacao; // entrega final que junta o plano da ordem indicada
   if (decisao) {
     ordem.decisao = decisao; // como o Crânio (Laya) decidiu, com que certeza e urgência
-    documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`);
+    documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`, ordem.cliente);
   }
   ordens.push(ordem);
   if (ordens.length > MAX_ORDENS) ordens.shift();
@@ -199,8 +212,8 @@ function descreverDecisao(d, ordem) {
 
 // Toda decisão passa pelo Crânio: ordens com agente indicado (pelo chefe ou por
 // quem delega) são avaliadas por ele antes de existir. Sem o Laya, seguem direto.
-async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente, anexo }) {
-  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem, cliente, anexo });
+async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente, anexo, pai }) {
+  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem, cliente, anexo, pai });
   let decisao;
   try {
     decisao = await decisor.avaliar(texto, motores.equipe(), para, de);
@@ -208,18 +221,22 @@ async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente
     console.warn(`[crânio] ${erro.message}`);
     decisao = { por: 'Laya', modo: 'indisponivel', motivo: erro.message.slice(0, 120), agente: para };
   }
-  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem, cliente, anexo });
+  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem, cliente, anexo, pai });
 }
 
 // Ordem do chefe (pela página ou pelo Telegram). para = id do agente, "todos" ou "auto" (o Laya escolhe).
 async function ordemDoChefe({ para, texto, origem, cliente, anexo }) {
   texto = texto.slice(0, 2000);
   if (cliente && !clientes.existe(cliente)) throw new Error(`cliente "${cliente}" não cadastrado`);
+  // sem cliente escolhido: reconhece pelo texto do pedido (nome, apelidos do projeto…)
+  let reconhecido = false;
+  if (!cliente) { cliente = clientes.detectar(texto) || ''; reconhecido = Boolean(cliente); }
   // "auto" sem o Laya: vai para o Orquestrador (ou para todos, se não houver)
   if (para === 'auto' && !decisor.ativo()) para = motores.equipe().orquestrador ? 'orquestrador' : 'todos';
-  if (para !== 'auto') return encaminhar({ para, texto, origem, cliente, anexo });
+  const marcar = (ordem) => { if (reconhecido && ordem.cliente) { ordem.clienteReconhecido = true; transmitir('ordem', ordem); } return ordem; };
+  if (para !== 'auto') return marcar(await encaminhar({ para, texto, origem, cliente, anexo }));
   const decisao = await decisor.decidir(texto, motores.equipe());
-  return criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente, anexo });
+  return marcar(criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente, anexo }));
 }
 
 // Ajuste: o mesmo agente refaz uma entrega dele, vendo o pedido original e o que entregou.
@@ -282,6 +299,24 @@ const telegram = criarTelegram({
 });
 const entregas = criarEntregas({ dadosDir: DADOS_DIR, nomeCliente: (id) => clientes.nomeDe(id), aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)), fichaCliente: (id) => clientes.ficha(id) });
+const supervisor = criarSupervisor({
+  ordens,
+  equipe: () => motores.equipe(),
+  estadoDe: (id) => estado.get(id)?.status,
+  registrarStatus,
+  mudou: (ordem) => transmitir('ordem', ordem),
+  criarOrdem, // direto, sem passar pelo Crânio: replanejar e consolidar são do Orquestrador
+  redespachar(ordem, agente) {
+    ordem.entregue = ordem.entregue.filter((a) => a !== agente);
+    ordem.reexecutando = [...new Set([...(ordem.reexecutando || []), agente])];
+    motores.despachar(ordem);
+  },
+  avisarChefe(texto) {
+    transmitirSemSalvar('aviso', { texto });
+    telegram.avisar(texto);
+    documentacao?.registrar(texto);
+  },
+});
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
   equipe: () => motores.equipe(),
@@ -289,6 +324,13 @@ documentacao = criarDocumentacao({
   naFila: (id, trabalho) => motores.naFila(id, trabalho),
   registrarStatus,
   transmitir: (evento, dados) => transmitirSemSalvar(evento, dados),
+  // cada cliente cadastrado tem a sua documentação separada
+  projetos: {
+    existe: (id) => clientes.existe(id),
+    nomeDe: (id) => clientes.nomeDe(id),
+    ficha: (id) => clientes.ficha(id),
+    listar: () => clientes.listar(),
+  },
 });
 
 // ---------- rotas ----------
@@ -358,6 +400,15 @@ async function atender(req, res) {
     }
   }
 
+  const tentar = rota.match(/^\/api\/ordens\/([\w-]+)\/tentar$/);
+  if (tentar && req.method === 'POST') {
+    const ordem = ordens.find((o) => o.id === tentar[1]);
+    if (!ordem) return enviarJSON(res, 404, { erro: 'ordem não encontrada' });
+    let dados;
+    try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
+    try { supervisor.tentarAgora(ordem, dados.agente || ordem.para); return enviarJSON(res, 200, ordem); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
   const ajuste = rota.match(/^\/api\/ordens\/([\w-]+)\/ajuste$/);
   if (ajuste && req.method === 'POST') {
     let dados;
@@ -372,7 +423,8 @@ async function atender(req, res) {
     try {
       if (req.method === 'DELETE') { await clientes.remover(cliente[1]); transmitirSemSalvar('clientes', clientes.listar()); return enviarJSON(res, 200, clientes.listar()); }
       const salvo = await clientes.salvar(cliente[1], await lerCorpo(req));
-      documentacao.registrar(`Clientes: ficha de ${salvo.nome} ${cliente[1] ? 'atualizada' : 'criada'}`);
+      documentacao.registrar(`Ficha do cliente ${cliente[1] ? 'atualizada' : 'criada'}: ${clientes.ficha(salvo.id).slice(0, 2000)}`, salvo.id);
+      documentacao.registrar(`Clientes: projeto ${salvo.nome} ${cliente[1] ? 'atualizado' : 'cadastrado'}`);
       transmitirSemSalvar('clientes', clientes.listar());
       return enviarJSON(res, 200, salvo);
     } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
@@ -408,10 +460,11 @@ async function atender(req, res) {
     return res.end(texto);
   }
 
-  if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
-  if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
+  // documentação: ?projeto=<id do cliente> (sem projeto = geral)
+  if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo(url.searchParams.get('projeto') || 'geral'));
+  if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true, projeto: url.searchParams.get('projeto') || 'geral' }));
 
-  // diagnóstico do Crânio: GET /api/decisor/teste?texto=escreva uma legenda
+  // diagnóstico do Crânio: GET /api/decisor/teste?texto=crie a tela de login
   if (rota === '/api/decisor/teste') {
     const texto = (url.searchParams.get('texto') || '').trim();
     if (!texto) return enviarJSON(res, 400, { erro: 'use ?texto=seu pedido' });
@@ -470,6 +523,7 @@ async function atender(req, res) {
     try {
       if (motor[2]) return enviarJSON(res, 200, await motores.testar(motor[1], dados));
       const config = await motores.salvarAgente(motor[1], dados);
+      supervisor.agenteMudou(motor[1]); // consertou o agente: o que estava parado com ele volta agora
       documentacao.registrar(`Equipe: ${motor[1]} agora usa ${motores.rotulo(config)}${config.funcao ? ` (função: ${config.funcao})` : ''}`);
       return enviarJSON(res, 200, { ok: true, config });
     } catch (erro) {
@@ -490,7 +544,7 @@ async function atender(req, res) {
     if (![1, -1, 0].includes(dados.nota)) return enviarJSON(res, 400, { erro: 'nota deve ser 1 (bom), -1 (ruim) ou 0 (limpar)' });
     if (dados.nota === 0) { delete resp.nota; delete resp.comentario; } else {
       resp.nota = dados.nota;
-      documentacao.registrar(`Avaliação do chefe: ${dados.nota === 1 ? '👍 boa' : '👎 ruim'} para a resposta de ${resp.agente} em "${ordem.texto.slice(0, 150)}"${typeof dados.comentario === 'string' && dados.comentario.trim() ? ` — comentário: ${dados.comentario.trim().slice(0, 300)}` : ''}`);
+      documentacao.registrar(`Avaliação do chefe: ${dados.nota === 1 ? '👍 boa' : '👎 ruim'} para a resposta de ${resp.agente} em "${ordem.texto.slice(0, 150)}"${typeof dados.comentario === 'string' && dados.comentario.trim() ? ` — comentário: ${dados.comentario.trim().slice(0, 300)}` : ''}`, ordem.cliente);
       resp.comentario = typeof dados.comentario === 'string' ? dados.comentario.trim().slice(0, 500) : resp.comentario;
       if (!resp.comentario) delete resp.comentario;
     }
@@ -567,13 +621,19 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 }
 
 await carregar();
+await clientes.carregar(); // antes da documentação: cada cliente tem o seu documento
 await documentacao.carregar();
-await clientes.carregar();
 await rotinas.carregar();
+// time antigo (agência de marketing) → time de desenvolvimento, uma vez só
+const idsTrocados = await motores.migrarTimeDev();
+if (idsTrocados) await rotinas.renomearAgentes(idsTrocados);
+// agentes que saíram da equipe (tinham IA embutida) somem do escritório
+for (const [id, s] of estado) if (s.motor && !motores.equipe()[id]) estado.delete(id);
 rotinas.iniciar();
 await entregas.carregar(ordens);
 telegram.iniciar();
 motores.iniciar(estado);
+supervisor.iniciar();
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {
   console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);

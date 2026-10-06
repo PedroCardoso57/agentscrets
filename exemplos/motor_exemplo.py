@@ -3,10 +3,10 @@
 Fica consultando as ordens que o chefe manda para o agente, executa e responde.
 Troque `executar` pela chamada da sua IA.
 
-    python exemplos/motor_exemplo.py redator
+    python exemplos/motor_exemplo.py backend
 
 Escritório na nuvem com senha:
-    ESCRITORIO_URL=https://seu-escritorio.onrender.com ESCRITORIO_TOKEN=... python exemplos/motor_exemplo.py redator
+    ESCRITORIO_URL=https://seu-escritorio.onrender.com ESCRITORIO_TOKEN=... python exemplos/motor_exemplo.py backend
 """
 
 import json
@@ -17,7 +17,7 @@ import urllib.request
 
 ESCRITORIO = os.environ.get("ESCRITORIO_URL", "http://localhost:8787")
 TOKEN = os.environ.get("ESCRITORIO_TOKEN")  # necessário se o escritório tiver senha
-AGENTE = sys.argv[1] if len(sys.argv) > 1 else "redator"
+AGENTE = sys.argv[1] if len(sys.argv) > 1 else "backend"
 
 
 def api(caminho, corpo=None):

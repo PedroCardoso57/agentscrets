@@ -4,6 +4,23 @@ Escritório 3D de agentes de IA. Cada agente (motor) tem a sua mesa e um bonequi
 
 ![Escritório 3D](docs/escritorio.png)
 
+## O time
+
+Uma software house de agentes, focada em **sistemas sob medida (ERP, CRM, painéis, integrações) e sites**:
+
+| Agente | id | O que faz |
+|---|---|---|
+| Tech Lead | `orquestrador` | Entende o pedido, define a arquitetura e distribui as tarefas (delega e acompanha até a entrega final) |
+| Requisitos | `requisitos` | Regras de negócio, histórias de usuário, critérios de aceite, entidades do banco |
+| Designer UI/UX | `designer` | Telas, fluxos, design system e protótipos em HTML/CSS |
+| Front-end | `frontend` | Sites, landing pages e telas de sistema (HTML, CSS, React) |
+| Back-end | `backend` | APIs, banco de dados, autenticação e integrações (Pix, nota fiscal, WhatsApp…) |
+| QA | `qa` | Code review, testes e segurança; revisa as entregas dos agentes marcados com "revisão" |
+| DevOps | `devops` | Docker, deploy na VPS, HTTPS, CI/CD, monitoramento e backups |
+| Documentador | `documentador` | README, documentação da API, manuais do usuário e a documentação viva do projeto |
+
+As funções e instruções de cada um ficam em `motores/time-dev.js` (e nos `motores.*.json` de exemplo); dá para mudar tudo em ⚙ Equipe. **Quem já usava o time antigo** (Pesquisador, Redator, Programador, Revisor) é convertido sozinho na primeira vez que o servidor sobe: cada papel mantém a IA que você tinha escolhido (Pesquisador → Requisitos, Programador → Back-end, Redator → Documentador, Revisor → QA), e Front-end e DevOps entram com a mesma IA do Back-end. As rotinas acompanham a troca de nomes.
+
 ## Rodando
 
 Precisa do Node 18+.
@@ -106,7 +123,7 @@ Em qualquer linguagem, mande o cabeçalho `Authorization: Bearer <token>` em tod
 
 Use a barra de baixo da tela:
 
-1. Escolha para quem é a ordem (um agente ou **todos**). Clicar num agente no painel ou na cena já seleciona ele. Também dá para começar a ordem com `@redator ...`.
+1. Escolha para quem é a ordem (um agente ou **todos**). Clicar num agente no painel ou na cena já seleciona ele. Também dá para começar a ordem com `@backend ...`.
 2. Escreva e aperte **Enviar**.
 3. O seu bonequinho levanta, vai até a mesa do agente (ou para a frente da equipe, se for para todos), fala a ordem e volta. O agente vira na cadeira para ouvir.
 4. A ordem aparece em **Ordens** no painel, com o andamento: *aguardando motor* → *entregue ao motor* → *respondida*. A resposta do motor também aparece no balão do agente.
@@ -118,7 +135,7 @@ Sem o servidor rodando (ou no modo demo), os agentes simulados cumprem a ordem e
 Edite `src/agentes.js`. Cada agente tem:
 
 ```js
-{ id: 'redator', nome: 'Redator', funcao: 'Escreve conteúdos', atividade: 'digitar', cor: '#3fb27f', cabelo: '#a0522d', pele: '#ffdbac' }
+{ id: 'backend', nome: 'Back-end', funcao: 'APIs, banco de dados e integrações', atividade: 'digitar', cor: '#3fb27f', cabelo: '#1a1a1a', pele: '#e0ac69' }
 ```
 
 As mesas são distribuídas sozinhas (8 por bloco); a sala cresce conforme a equipe aumenta.
@@ -133,11 +150,11 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 
 ```json
 {
-  "orquestrador": { "provedor": "anthropic", "modelo": "claude-opus-5-5", "delegar": true, "funcao": "Planeja e distribui", "instrucoes": "Você é o Orquestrador..." },
-  "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "Escreve legendas", "instrucoes": "Você é o Redator..." },
-  "revisor":      { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
-  "pesquisador":  { "provedor": "gemini", "modelo": "<modelo do Gemini>", "instrucoes": "..." },
-  "designer":     { "webhook": "https://seu-n8n.com/webhook/designer" }
+  "orquestrador": { "provedor": "anthropic", "modelo": "claude-opus-5-5", "delegar": true, "funcao": "Tech Lead: arquitetura e tarefas", "instrucoes": "Você é o Tech Lead..." },
+  "backend":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "APIs e banco de dados", "instrucoes": "Você é o Dev Back-end..." },
+  "qa":           { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
+  "requisitos":   { "provedor": "gemini", "modelo": "<modelo do Gemini>", "instrucoes": "..." },
+  "devops":       { "webhook": "https://seu-n8n.com/webhook/devops" }
 }
 ```
 
@@ -184,14 +201,16 @@ docker compose logs -f laya   # na primeira vez ele baixa o modelo (~2 GB); espe
 
 O Laya decide melhor quanto mais clara for a **função** de cada agente (em ⚙ Equipe).
 
-## Documentação viva (mantida pelo Redator)
+## Documentação viva (mantida pelo Documentador)
 
-O botão **📄 Documentação** abre o documento do projeto, que o **Redator** mantém atualizado sozinho. O escritório anota cada novidade (ordens entregues, decisões do Crânio e do Orquestrador, trocas de IA na equipe, suas avaliações) e, a cada poucos minutos, se houver novidades, o Redator reescreve o documento com a IA dele. Enquanto isso, o bonequinho dele aparece "Atualizando a documentação".
+O botão **📄 Documentação** abre os documentos que o **Documentador** mantém atualizados sozinho, **um por projeto**:
 
-- Seções: Visão geral, Equipe e IAs, Decisões, Entregas recentes, Pendências e próximos passos, Histórico.
-- A janela atualiza na hora quando ele termina (uma bolinha verde no botão avisa que há novidades); **Atualizar agora** força uma rodada e **Baixar .md** salva o arquivo.
-- Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
-- Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
+- **Cada cliente tem a sua documentação**, com visão geral, escopo e módulos, arquitetura e stack, regras de negócio, decisões, entregas, pendências e histórico. Ela parte da ficha do cliente e só recebe o que é daquele projeto. Escolha o projeto no seletor da janela.
+- **O documento Geral** cobre o escritório: a equipe e as IAs, a lista de projetos e os trabalhos que não são de nenhum cliente (ex.: "configure o backup do servidor").
+- **Como o escritório sabe de qual projeto é cada coisa:** pelo cliente escolhido na barra de ordens ou, se você não escolher, **reconhecendo pelo texto do pedido**. Vale o nome do cliente, o id ou os **apelidos** cadastrados na ficha ("ERP da padaria, PDV do Zé"), e também uma palavra que só aparece no nome de um cliente. O cartão mostra "👤 Padaria do Zé (reconhecido no pedido)". Pedidos que citam dois projetos ou nenhum ficam no Geral. As tarefas que o Tech Lead distribui, os ajustes e a entrega final herdam o projeto da ordem original.
+- O escritório anota as novidades (entregas, decisões do Crânio, avaliações, fichas) e, a cada poucos minutos, o Documentador reescreve só os documentos que tiveram novidade. **Atualizar agora** força o projeto aberto e **Baixar .md** salva o arquivo dele.
+- Os arquivos ficam em `dados/documentacao.md` (Geral) e `dados/documentacao/<cliente>.md`, cada um com a versão anterior em `.anterior`. Quem já tinha a documentação de antes encontra o conteúdo no Geral.
+- Para trocar o responsável ou o intervalo: `DOCUMENTADOR=documentador` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
 ## Visual e marca
 
@@ -199,20 +218,20 @@ O botão **📄 Documentação** abre o documento do projeto, que o **Redator** 
 - **Faixa "Hoje"** no topo: entregas do dia, quem está trabalhando, erros e a próxima rotina.
 - **Painel com abas** Ordens | Equipe; cada ordem é um cartão na cor do agente, com horário, e respostas longas ficam recolhidas ("ver mais").
 - **Avisos** quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
-- **Escritório vivo**: dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no Revisor e no Pesquisador, gorro no Programador, crachá no Orquestrador, lápis no Redator), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo Revisor quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
+- **Escritório vivo**: dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no QA e no Requisitos, gorro no Back-end, boné no Front-end, capacete no DevOps, crachá no Tech Lead, lápis no Documentador), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo QA quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
 - **Modo lista** (☰ na barra): esconde o 3D e mostra ordens e equipe em tela cheia. No celular ele já começa assim; a escolha fica lembrada no aparelho.
 - **Sua marca**: no `.env`, `MARCA_NOME`, `MARCA_SUBTITULO` e `MARCA_COR` (hex) mudam o topo, a cor de destaque e a placa na parede. Fonte Montserrat.
 
 ## Clientes, ajustes, Revisor, internet e rotinas
 
 ### 📇 Clientes
-Cadastre uma ficha por cliente: nicho, público, tom de voz, produtos, o que evitar e exemplos que deram certo. Escolha o cliente na barra de ordens (aparece ao lado de "Para") e a ficha vai junto para o agente, inclusive nas tarefas que o Orquestrador distribui. No Telegram, comece a ordem com `#id-do-cliente` (ex.: `#padaria-do-ze /redator legenda de natal`); `/clientes` lista os ids. As entregas guardam o cliente e o 📦 Entregas filtra por ele. Fica em `dados/clientes.json`.
+Cadastre uma ficha por cliente/projeto: segmento, escopo e módulos, usuários do sistema, stack e padrões técnicos, integrações e infraestrutura, regras de negócio e restrições, referências. Escolha o cliente na barra de ordens (aparece ao lado de "Para") e a ficha vai junto para o agente, inclusive nas tarefas que o Orquestrador distribui. No Telegram, comece a ordem com `#id-do-cliente` (ex.: `#padaria-do-ze /frontend site institucional`); `/clientes` lista os ids. As entregas guardam o cliente e o 📦 Entregas filtra por ele. Fica em `dados/clientes.json`.
 
 ### ↩ Ajustes
-Para refazer uma entrega, clique em **↩ ajustar** embaixo dela (no painel ou no 📦 Entregas) e diga o que mudar ("mais curta", "tom mais sério"). O mesmo agente recebe o pedido original, o que ele entregou e o seu ajuste, e devolve a versão completa. No Telegram, é só **responder à mensagem da entrega**.
+Para refazer uma entrega, clique em **↩ ajustar** embaixo dela (no painel ou no 📦 Entregas) e diga o que mudar ("use PostgreSQL em vez de MySQL", "adicione paginação na tabela"). O mesmo agente recebe o pedido original, o que ele entregou e o seu ajuste, e devolve a versão completa. No Telegram, é só **responder à mensagem da entrega**.
 
-### ✅ Revisor automático
-Em ⚙ Equipe, marque **"Entregas passam pelo Revisor"** nos agentes que você quer revisados. O agente termina, o Revisor corrige, e você recebe a versão final com as observações dele (no painel, no `.md` e no Telegram). Se o Revisor falhar, a entrega chega sem revisão e com o aviso. Para usar outro agente como revisor: `REVISOR=<id>` no `.env`. Cada revisão é mais uma chamada de IA: atenção às cotas gratuitas.
+### ✅ Revisão automática pelo QA
+Em ⚙ Equipe, marque **"Entregas passam pelo QA"** nos agentes que você quer revisados (ex.: Front-end e Back-end). O agente termina, o QA revisa o código e corrige, e você recebe a versão final com as observações dele (no painel, no `.md` e no Telegram). Se o Revisor falhar, a entrega chega sem revisão e com o aviso. Para usar outro agente como revisor: `REVISOR=<id>` no `.env`. Cada revisão é mais uma chamada de IA: atenção às cotas gratuitas.
 
 ### 🌐 Pesquisa na internet
 Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente busca na web e a resposta termina com **Fontes:**. No Gemini usa a busca do Google (grátis dentro do limite do plano); no Claude, a ferramenta de busca da Anthropic (cobrada à parte por busca).
@@ -220,14 +239,27 @@ Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente bu
 ### 🗓 Rotinas
 Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
 
-**☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Redator, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
+**☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Documentador, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
+
+### 🔁 Supervisor: nenhuma tarefa fica pela metade
+- **Tentativas automáticas:** se uma tarefa dá erro (limite da IA, chave errada, provedor fora do ar) ou é interrompida porque o servidor reiniciou, ela é tentada de novo sozinha. As esperas crescem: 1, 3, 10, 30 e 60 minutos. O cartão fica **com erro** e mostra a próxima tentativa, com o botão **↻ Tentar agora**.
+- **Agente consertado:** salvou o agente em ⚙ Equipe? Tudo o que estava parado com ele volta na hora.
+- **Sem jeito:** depois de 5 tentativas, ou se o agente saiu da equipe:
+  - se a tarefa foi passada pelo Orquestrador, ele recebe o pedido de **replanejar** e passa a tarefa para outro agente;
+  - se a ordem era sua e direta, você recebe um aviso na tela e no Telegram.
+- **O Orquestrador acompanha o plano até o fim:**
+  - fica "Acompanhando N plano(s)";
+  - o cartão mostra "📋 plano: 2/3 prontas";
+  - quando todas as tarefas ficam prontas, ele junta tudo numa **🏁 entrega final** para você.
+  - Para desligar a entrega final: `ORQUESTRADOR_CONSOLIDAR=0` no `.env`.
+- Erros antigos do histórico (mais de 12 horas) não são refeitos, para não gastar cota à toa.
 
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
 1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;
 2. se continuar, ou se a cota do dia acabou, ele usa a **IA reserva**: em ⚙ Equipe → "IA reserva", escolha outro agente para emprestar a IA dele (de preferência de outro provedor: Gemini ↔ Groq ↔ OpenRouter ↔ NVIDIA ↔ Mistral). O papel e as instruções continuam do agente; o relatório mostra "(reserva)".
 
-Para gastar menos cota: espalhe os agentes por provedores diferentes, use o Revisor só onde vale a pena e aumente `DOC_INTERVALO_MIN` (a documentação viva também chama a IA do Redator).
+Para gastar menos cota: espalhe os agentes por provedores diferentes, use a revisão do QA só onde vale a pena e aumente `DOC_INTERVALO_MIN` (a documentação viva também chama a IA do Redator).
 
 ## Entregas: tudo o que a equipe já produziu
 
@@ -238,8 +270,8 @@ Cada entrega também vira um arquivo `.md` na pasta de dados, organizado por dia
 ```
 dados/entregas/
   2026-10-06/
-    1432-redator-legenda-sobre-cafe-gelado-f3b4aadb-0.md
-    1433-designer-carrossel-de-lancamento-9a1c22e0-0.md
+    1432-backend-api-de-clientes-do-crm-f3b4aadb-0.md
+    1433-frontend-tela-de-pedidos-9a1c22e0-0.md
   indice.json
 ```
 
@@ -257,8 +289,8 @@ Como mandar ordens:
 
 | Mensagem | Vai para |
 |---|---|
-| `preciso de 3 legendas para segunda` | o 🔮 Crânio escolhe (com o Laya ligado); sem ele, o Orquestrador |
-| `/redator escreva 3 legendas…` (ou `@redator …`) | o agente indicado (o Crânio ainda confere) |
+| `preciso da tela de login do CRM` | o 🔮 Crânio escolhe (com o Laya ligado); sem ele, o Orquestrador |
+| `/backend crie a API de pedidos…` (ou `@backend …`) | o agente indicado (o Crânio ainda confere) |
 | `/todos reunião às 15h` | toda a equipe |
 | `/equipe` | mostra quem está fazendo o quê |
 | `/ajuda` | lista os comandos e os agentes |
@@ -279,7 +311,7 @@ O primeiro chat que mandar `/start` fica gravado em `dados/telegram.json`: só e
 Todos os caminhos usam a mesma mensagem:
 
 ```json
-{ "id": "redator", "status": "trabalhando", "tarefa": "Escrevendo legenda do post" }
+{ "id": "backend", "status": "trabalhando", "tarefa": "Criando a API de clientes" }
 ```
 
 `status`: `ocioso` · `trabalhando` · `aguardando` · `concluido` · `erro`. `tarefa` aparece no balão sobre o bonequinho.
@@ -291,7 +323,7 @@ Com `node servidor.js` rodando, qualquer motor, em qualquer linguagem, faz um PO
 ```bash
 curl -X POST http://localhost:8787/api/status \
   -H 'Content-Type: application/json' \
-  -d '{"id":"redator","status":"trabalhando","tarefa":"Escrevendo legenda"}'
+  -d '{"id": "backend", "status": "trabalhando", "tarefa": "Criando a API de clientes"}'
 ```
 
 ```python
@@ -311,25 +343,25 @@ Escolha um dos dois jeitos:
 **a) Consultar (mais simples, funciona atrás de qualquer firewall).** O motor pergunta a cada poucos segundos se há ordens para ele, e depois responde:
 
 ```bash
-# ordens novas para o redator (cada ordem só é entregue uma vez)
-curl http://localhost:8787/api/ordens/pendentes?agente=redator
-# → [{"id":"93abe7c2","para":"redator","texto":"Escreva 3 legendas","criadaEm":"..."}]
+# ordens novas para o backend (cada ordem só é entregue uma vez)
+curl http://localhost:8787/api/ordens/pendentes?agente=backend
+# → [{"id":"93abe7c2","para":"backend","texto":"Crie a API de clientes","criadaEm":"..."}]
 
 # resposta (o "status" opcional também atualiza o bonequinho)
 curl -X POST http://localhost:8787/api/ordens/93abe7c2/resposta \
   -H 'Content-Type: application/json' \
-  -d '{"agente":"redator","texto":"Legendas prontas: ...","status":"concluido"}'
+  -d '{"agente":"backend","texto":"API pronta: ...","status":"concluido"}'
 ```
 
-Ordens para **todos** são entregues uma vez a cada agente que consultar. Veja os exemplos prontos: `exemplos/simular-motores.js` (Node) e `exemplos/motor_exemplo.py` (Python, sem dependências — `python exemplos/motor_exemplo.py redator`).
+Ordens para **todos** são entregues uma vez a cada agente que consultar. Veja os exemplos prontos: `exemplos/simular-motores.js` (Node) e `exemplos/motor_exemplo.py` (Python, sem dependências — `python exemplos/motor_exemplo.py backend`).
 
 **b) Webhook (o escritório chama o seu motor).** No `motores.json`, coloque a URL do agente (serve para n8n, Make, uma API sua etc.):
 
 ```json
-{ "redator": { "webhook": "http://localhost:5000/ordem" } }
+{ "backend": { "webhook": "http://localhost:5000/ordem" } }
 ```
 
-Cada ordem vira um `POST` com `{"ordem": {"id", "para", "texto", "criadaEm"}, "agente": "redator"}`. Se o motor responder na hora com `{"resposta": "..."}`, ela já aparece no escritório; se demorar, responda depois pela rota `/api/ordens/<id>/resposta`. O `motores.json` fica fora do git.
+Cada ordem vira um `POST` com `{"ordem": {"id", "para", "texto", "criadaEm"}, "agente": "backend"}`. Se o motor responder na hora com `{"resposta": "..."}`, ela já aparece no escritório; se demorar, responda depois pela rota `/api/ordens/<id>/resposta`. O `motores.json` fica fora do git.
 
 ### 2. WebSocket próprio
 
@@ -338,9 +370,9 @@ Abra `index.html?ws=ws://seu-servidor:porta` e envie as mensagens JSON pelo sock
 ### 3. Na mesma página ou num iframe
 
 ```js
-window.Escritorio.atualizar('designer', { status: 'trabalhando', tarefa: 'Criando carrossel' });
+window.Escritorio.atualizar('designer', { status: 'trabalhando', tarefa: 'Desenhando o dashboard' });
 window.Escritorio.adicionarAgente({ id: 'financeiro', nome: 'Financeiro', atividade: 'analisar' });
-window.Escritorio.ordem('redator', 'Escreva 3 legendas');   // o chefe leva a ordem
+window.Escritorio.ordem('backend', 'Crie a API de clientes');   // o chefe leva a ordem
 
 // de fora de um iframe:
 iframe.contentWindow.postMessage({ escritorio: { id: 'revisor', status: 'aguardando' } }, '*');
@@ -375,7 +407,7 @@ src/main.js             cena 3D, câmera e painel
 src/configuracao.js     janelas Equipe (trocar IA) e Relatório
 src/cranio.js           a bola de cristal do Crânio (Laya) e a animação das decisões
 src/documentacao.js     janela da documentação viva
-motores/documentacao.js o Redator mantendo a documentação do projeto
+motores/documentacao.js o Documentador mantendo a documentação do projeto
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

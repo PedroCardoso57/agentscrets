@@ -45,16 +45,28 @@ export function criarJanelaDocumentacao({ servidorAtivo, nomeDe }) {
   const corpo = dlg.querySelector('.corpo');
   const meta = dlg.querySelector('.meta-doc');
   const botaoAtualizar = dlg.querySelector('.atualizar-doc');
+  const seletor = dlg.querySelector('select[name=projeto]');
   let atual = null;
+  let projeto = 'geral'; // documento aberto: geral ou o id de um cliente
+
+  // um documento por projeto: o seletor lista o geral e cada cliente (com novidades pendentes)
+  function montarSeletor(lista = []) {
+    seletor.replaceChildren(...lista.map((p) => new Option(`${p.id === 'geral' ? '🏢' : '👤'} ${p.nome}${p.pendentes ? ` (${p.pendentes} nova${p.pendentes > 1 ? 's' : ''})` : ''}`, p.id)));
+    seletor.value = lista.some((p) => p.id === projeto) ? projeto : 'geral';
+  }
 
   function mostrar(r) {
+    // evento ao vivo de outro projeto: só atualiza a lista e a bolinha de novidade
+    if (r.projeto && r.projeto !== projeto && dlg.open) { montarSeletor(r.projetos); return; }
+    if (r.projeto && r.projeto !== projeto) { botaoTopo.classList.toggle('novidade', Boolean(r.pendentesTotal)); return; }
     atual = r;
+    montarSeletor(r.projetos);
     corpo.innerHTML = markdownParaHtml(r.texto || ''); // seguro: markdownParaHtml escapa o texto
     const quando = r.atualizadoEm ? new Date(r.atualizadoEm).toLocaleString('pt-BR') : 'ainda não atualizada';
     meta.textContent = !r.ativo
       ? `Documentador (${nomeDe(r.documentador)}) sem IA configurada: escolha uma IA para ele em ⚙ Equipe.`
-      : `Mantida por ${nomeDe(r.por || r.documentador)} · ${quando} · ${r.pendentes ? `${r.pendentes} novidade(s) entram na próxima atualização (a cada ${r.intervaloMin} min)` : 'em dia'}`;
-    botaoTopo.classList.toggle('novidade', Boolean(r.pendentes) && !dlg.open);
+      : `${r.nome} · mantida por ${nomeDe(r.por || r.documentador)} · ${quando} · ${r.pendentes ? `${r.pendentes} novidade(s) entram na próxima atualização (a cada ${r.intervaloMin} min)` : 'em dia'}`;
+    botaoTopo.classList.toggle('novidade', Boolean(r.pendentesTotal ?? r.pendentes) && !dlg.open);
   }
 
   async function abrir() {
@@ -62,13 +74,18 @@ export function criarJanelaDocumentacao({ servidorAtivo, nomeDe }) {
     dlg.showModal();
     botaoTopo.classList.remove('novidade');
     if (!atual) corpo.textContent = 'Carregando…';
-    try { mostrar(await (await fetch('api/documentacao', { cache: 'no-store' })).json()); } catch (erro) { corpo.textContent = `Não consegui carregar: ${erro.message}`; }
+    await carregarProjeto();
   }
+
+  async function carregarProjeto() {
+    try { mostrar(await (await fetch(`api/documentacao?projeto=${encodeURIComponent(projeto)}`, { cache: 'no-store' })).json()); } catch (erro) { corpo.textContent = `Não consegui carregar: ${erro.message}`; }
+  }
+  seletor.addEventListener('change', () => { projeto = seletor.value; corpo.textContent = 'Carregando…'; carregarProjeto(); });
 
   botaoAtualizar.addEventListener('click', async () => {
     botaoAtualizar.disabled = true;
     botaoAtualizar.textContent = 'Atualizando…';
-    try { mostrar(await (await fetch('api/documentacao/atualizar', { method: 'POST' })).json()); } finally {
+    try { mostrar(await (await fetch(`api/documentacao/atualizar?projeto=${encodeURIComponent(projeto)}`, { method: 'POST' })).json()); } finally {
       botaoAtualizar.disabled = false;
       botaoAtualizar.textContent = 'Atualizar agora';
     }
@@ -78,7 +95,7 @@ export function criarJanelaDocumentacao({ servidorAtivo, nomeDe }) {
     const blob = new Blob([atual?.texto || ''], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'documentacao-do-projeto.md';
+    a.download = `documentacao-${projeto}.md`;
     a.click();
     URL.revokeObjectURL(a.href);
   });

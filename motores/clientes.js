@@ -1,19 +1,20 @@
-// Fichas de clientes: o que os agentes precisam saber da marca para acertar de
-// primeira (tom de voz, público, produtos, o que evitar). Ficam em
+// Fichas de clientes: o que os agentes precisam saber do projeto para acertar de
+// primeira (escopo, usuários, stack, integrações, regras de negócio). Ficam em
 // DADOS_DIR/clientes.json e vão junto nas instruções de toda ordem do cliente.
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export const CAMPOS_CLIENTE = {
-  nome: { rotulo: 'Nome', max: 80 },
-  nicho: { rotulo: 'Nicho / segmento', max: 200 },
-  publico: { rotulo: 'Público', max: 1000 },
-  tom: { rotulo: 'Tom de voz', max: 1000 },
-  produtos: { rotulo: 'Produtos e serviços', max: 2000 },
-  evitar: { rotulo: 'O que evitar', max: 1000 },
-  exemplos: { rotulo: 'Exemplos que deram certo', max: 4000 },
-  observacoes: { rotulo: 'Outras informações', max: 2000 },
+  nome: { rotulo: 'Cliente', max: 80 },
+  apelidos: { rotulo: 'Como o projeto aparece nos pedidos', max: 300 },
+  nicho: { rotulo: 'Segmento', max: 200 },
+  produtos: { rotulo: 'Escopo e módulos', max: 2000 },
+  publico: { rotulo: 'Usuários do sistema', max: 1000 },
+  tom: { rotulo: 'Stack e padrões técnicos', max: 1000 },
+  observacoes: { rotulo: 'Integrações e infraestrutura', max: 2000 },
+  evitar: { rotulo: 'Regras de negócio e restrições', max: 1000 },
+  exemplos: { rotulo: 'Referências', max: 4000 },
 };
 
 export function slugCliente(texto) {
@@ -83,5 +84,29 @@ export function criarClientes({ dadosDir }) {
     return clientes[s] ? s : Object.keys(clientes).find((id) => slugCliente(clientes[id].nome) === s) || null;
   }
 
-  return { carregar, listar, salvar, remover, ficha, existe, nomeDe, achar };
+  // Reconhece de qual cliente é um pedido pelo texto: nome, id, apelidos ("ERP da padaria,
+  // sistema do Zé") ou uma palavra que só aparece no nome de um cliente. Ambíguo → null.
+  const COMUNS = new Set(['empresa', 'grupo', 'sistema', 'projeto', 'cliente', 'loja', 'lojas', 'comercio', 'servicos', 'solucoes', 'brasil', 'ltda', 'eireli', 'mercado', 'site', 'app']);
+  const normalizar = (t) => ` ${String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  function detectar(texto) {
+    const alvo = normalizar(texto);
+    const fortes = new Set();
+    const fracos = new Map(); // palavra → clientes que a têm no nome
+    for (const [id, c] of Object.entries(clientes)) {
+      const frases = [c.nome, id.replace(/-/g, ' '), ...(c.apelidos || '').split(/[,;\n]/)].map(normalizar).filter((f) => f.trim().length >= 3);
+      if (frases.some((f) => alvo.includes(f))) fortes.add(id);
+      for (const p of normalizar(c.nome).trim().split(' ')) {
+        if (p.length < 4 || COMUNS.has(p)) continue;
+        if (!fracos.has(p)) fracos.set(p, new Set());
+        fracos.get(p).add(id);
+      }
+    }
+    if (fortes.size === 1) return [...fortes][0];
+    if (fortes.size > 1) return null;
+    const achados = new Set();
+    for (const [p, ids] of fracos) if (ids.size === 1 && alvo.includes(` ${p} `)) achados.add([...ids][0]);
+    return achados.size === 1 ? [...achados][0] : null;
+  }
+
+  return { carregar, listar, salvar, remover, ficha, existe, nomeDe, achar, detectar };
 }

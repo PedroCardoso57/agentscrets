@@ -1,13 +1,13 @@
 // Ponte entre o escritório e os seus motores/agentes reais.
 //
 // Formas de enviar status (todas usam o mesmo formato):
-//   { id: 'redator', status: 'trabalhando', tarefa: 'Escrevendo post do blog' }
+//   { id: 'backend', status: 'trabalhando', tarefa: 'Criando a API de clientes' }
 //
 // 1. Servidor local (recomendado): `node servidor.js` e os motores fazem
 //    POST http://localhost:8787/api/status com o JSON acima. A página recebe
 //    em tempo real via Server-Sent Events.
 // 2. WebSocket próprio: abra a página com ?ws=ws://host:porta
-// 3. JavaScript na mesma página: window.Escritorio.atualizar('redator', {...})
+// 3. JavaScript na mesma página: window.Escritorio.atualizar('backend', {...})
 // 4. iframe: parent.postMessage({ escritorio: {...} }, '*') para dentro do iframe
 // Sem nenhuma fonte conectada, roda uma simulação (modo demo).
 //
@@ -18,15 +18,17 @@
 import { STATUS } from './agentes.js';
 
 const TAREFAS_DEMO = {
-  orquestrador: ['Distribuindo tarefas da sprint', 'Revisando prioridades', 'Montando plano da semana'],
-  pesquisador: ['Lendo relatórios de mercado', 'Coletando referências', 'Pesquisando concorrentes'],
-  redator: ['Escrevendo legenda do post', 'Rascunhando e-mail', 'Criando roteiro de Reels'],
-  designer: ['Desenhando carrossel', 'Ajustando paleta de cores', 'Criando thumbnail'],
-  programador: ['Integrando API', 'Corrigindo bug na automação', 'Escrevendo testes'],
-  revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
+  orquestrador: ['Definindo a arquitetura do CRM', 'Quebrando o ERP em tarefas', 'Revisando prioridades da sprint'],
+  requisitos: ['Escrevendo histórias de usuário', 'Mapeando regras do financeiro', 'Levantando campos do cadastro'],
+  designer: ['Desenhando o dashboard', 'Criando o design system', 'Prototipando o checkout'],
+  frontend: ['Montando a landing page', 'Criando a tabela de pedidos', 'Deixando o site responsivo'],
+  backend: ['Criando a API de clientes', 'Modelando o banco de dados', 'Integrando o Pix'],
+  qa: ['Revisando o pull request', 'Escrevendo testes da API', 'Testando o login'],
+  devops: ['Subindo o Docker na VPS', 'Configurando HTTPS', 'Agendando backup do banco'],
+  documentador: ['Escrevendo o README', 'Documentando a API', 'Manual do usuário do ERP'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {}, aoAviso = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -185,6 +187,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('aviso', (e) => { try { aoAviso(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('clientes', (e) => { try { aoClientes(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('removido', (e) => { try { aoRemovido(JSON.parse(e.data).id); } catch { /* ignora */ } });
     fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });
@@ -207,5 +210,12 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     receberOrdem(await r.json());
   }
 
-  return { enviarOrdem, pedirAjuste, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
+  // O supervisor tenta de novo agora uma tarefa que falhou.
+  async function tentarDeNovo(ordemId, agente) {
+    const r = await fetch(`api/ordens/${encodeURIComponent(ordemId)}/tentar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agente }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
+    receberOrdem(await r.json());
+  }
+
+  return { enviarOrdem, pedirAjuste, tentarDeNovo, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
 }
