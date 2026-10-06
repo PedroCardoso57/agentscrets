@@ -20,6 +20,7 @@
   <header id="topo">
     <h1>agentscrets <span>escritório de agentes de IA</span></h1>
     <div class="botoes-topo">
+      <button type="button" id="abrir-documentacao" title="Documentação do projeto, mantida pelo Redator">📄 Documentação</button>
       <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
       <button type="button" id="abrir-equipe" title="Escolher a IA de cada agente">⚙ Equipe</button>
       <div id="conexao" title="Origem dos status">● demo</div>
@@ -60,6 +61,17 @@
       <button type="button" class="fechar" aria-label="Fechar">✕</button>
     </header>
     <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-documentacao" aria-labelledby="titulo-doc">
+    <header>
+      <h2 id="titulo-doc">Documentação do projeto</h2>
+      <button type="button" class="atualizar-doc">Atualizar agora</button>
+      <button type="button" class="baixar-doc">Baixar .md</button>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <p class="meta-doc"></p>
+    <article class="corpo doc"></article>
   </dialog>
 
   <script type="module" src="src/main.js"></script>

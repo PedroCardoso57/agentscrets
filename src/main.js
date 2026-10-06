@@ -8,6 +8,7 @@ import { Chefe } from './chefe.js';
 import { Cranio } from './cranio.js';
 import { criarIntegracao } from './integracao.js';
 import { criarConfiguracao } from './configuracao.js';
+import { criarJanelaDocumentacao } from './documentacao.js';
 
 // ---------- renderização ----------
 
@@ -226,6 +227,7 @@ const ordensVistas = new Map(); // id → nº de respostas já mostradas
 let integracao = null;
 let decisorAtivo = false;
 let configuracao = null;
+let janelaDoc = null;
 
 function avisar(texto, erro = false) {
   aviso.textContent = texto;
@@ -407,6 +409,7 @@ enquadrarTudo();
 
 const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
+  aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoDecisor({ ativo, online }) {
     const mudou = cranio.grupo.visible !== ativo;
     cranio.grupo.visible = ativo;
@@ -455,6 +458,8 @@ integracao = criarIntegracao({
     conexao.classList.toggle('online', online);
   },
 });
+
+janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
 
 configuracao = criarConfiguracao({
   agentesVisiveis: () => [...estacoes.keys()],

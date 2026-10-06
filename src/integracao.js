@@ -28,7 +28,7 @@ const TAREFAS_DEMO = {
   revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -181,6 +181,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.onerror = () => aoConexao('reconectando…', false);
     return true;
   }

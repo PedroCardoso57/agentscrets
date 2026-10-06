@@ -218,9 +218,15 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   }
 
   function enfileirar(id, ordem) {
+    naFila(id, () => executar(id, ordem)).catch((erro) => console.error(erro));
+  }
+
+  // Põe qualquer trabalho na fila do agente (ele faz uma coisa por vez). Devolve a promessa do trabalho.
+  function naFila(id, trabalho) {
     const anterior = filas.get(id) || Promise.resolve();
-    const atual = anterior.then(() => executar(id, ordem)).catch((erro) => console.error(erro));
-    filas.set(id, atual);
+    const atual = anterior.catch(() => {}).then(trabalho);
+    filas.set(id, atual.catch(() => {}));
+    return atual;
   }
 
   // Entrega a ordem a todos os agentes com motor embutido a que ela se destina.
@@ -259,5 +265,5 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return configuracao();
   }
 
-  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe, modelos };
+  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe, modelos, naFila, rotulo };
 }

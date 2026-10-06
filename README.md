@@ -170,6 +170,15 @@ docker compose logs -f laya   # na primeira vez ele baixa o modelo (~2 GB); espe
 
 O Laya decide melhor quanto mais clara for a **função** de cada agente (em ⚙ Equipe).
 
+## Documentação viva (mantida pelo Redator)
+
+O botão **📄 Documentação** abre o documento do projeto, que o **Redator** mantém atualizado sozinho. O escritório anota cada novidade (ordens entregues, decisões do Crânio e do Orquestrador, trocas de IA na equipe, suas avaliações) e, a cada poucos minutos, se houver novidades, o Redator reescreve o documento com a IA dele. Enquanto isso, o bonequinho dele aparece "Atualizando a documentação".
+
+- Seções: Visão geral, Equipe e IAs, Decisões, Entregas recentes, Pendências e próximos passos, Histórico.
+- A janela atualiza na hora quando ele termina (uma bolinha verde no botão avisa que há novidades); **Atualizar agora** força uma rodada e **Baixar .md** salva o arquivo.
+- Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
+- Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
+
 ## Trocando a IA pela tela e comparando na prática
 
 - **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
@@ -279,6 +288,8 @@ src/integracao.js       HTTP/SSE, WebSocket, postMessage, ordens e modo demo
 src/main.js             cena 3D, câmera e painel
 src/configuracao.js     janelas Equipe (trocar IA) e Relatório
 src/cranio.js           a sala do Crânio (Laya) e a animação das decisões
+src/documentacao.js     janela da documentação viva
+motores/documentacao.js o Redator mantendo a documentação do projeto
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

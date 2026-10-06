@@ -18,7 +18,7 @@
     "baseUrl": "https://api.groq.com/openai/v1",
     "chaveEnv": "GROQ_API_KEY",
     "modelo": "openai/gpt-oss-120b",
-    "funcao": "Escreve legendas, roteiros, e-mails e textos de site",
+    "funcao": "Escreve legendas, roteiros, e-mails e textos de site, e mantém a documentação do projeto",
     "instrucoes": "Você é o Redator da agência. Escreva textos prontos para publicar, no tom da marca quando informado, com gancho forte no início e chamada para ação no fim. Entregue variações quando fizer sentido."
   },
   "designer": {

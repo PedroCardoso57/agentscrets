@@ -1,6 +1,5 @@
 {
   "_comentario": "Copie para motores.json e ajuste. Cada agente escolhe sua IA em 'provedor': anthropic (Claude), openai, gemini, compativel (OpenRouter, DeepSeek, Groq, Ollama...) ou webhook (n8n, Make). As chaves NÃO ficam aqui: vão nas variáveis ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY (ou na variável indicada em 'chaveEnv'). Chaves que começam com '_' são ignoradas.",
-
   "orquestrador": {
     "provedor": "anthropic",
     "modelo": "claude-opus-5-5",
@@ -18,7 +17,7 @@
   "redator": {
     "provedor": "anthropic",
     "modelo": "claude-opus-5-5",
-    "funcao": "Escreve legendas, roteiros, e-mails e textos de site",
+    "funcao": "Escreve legendas, roteiros, e-mails e textos de site, e mantém a documentação do projeto",
     "instrucoes": "Você é o Redator da agência. Escreva textos prontos para publicar, no tom da marca quando informado, com gancho forte no início e chamada para ação no fim. Entregue variações quando fizer sentido."
   },
   "designer": {
@@ -51,12 +50,37 @@
     "funcao": "Revisa textos e entregas antes de irem ao cliente",
     "instrucoes": "Você é o Revisor da agência. Corrija gramática e clareza, aponte riscos (promessas exageradas, termos proibidos em anúncios) e devolva a versão final revisada."
   },
-
   "_exemplos_de_outros_provedores": {
-    "com_openai":   { "provedor": "openai", "modelo": "<nome do modelo no painel da OpenAI>", "funcao": "...", "instrucoes": "..." },
-    "com_gemini":   { "provedor": "gemini", "modelo": "<nome do modelo no Google AI Studio>", "funcao": "...", "instrucoes": "..." },
-    "com_openrouter": { "provedor": "compativel", "baseUrl": "https://openrouter.ai/api/v1", "chaveEnv": "OPENROUTER_API_KEY", "modelo": "<id do modelo no OpenRouter>", "funcao": "...", "instrucoes": "..." },
-    "com_ollama_local": { "provedor": "compativel", "baseUrl": "http://localhost:11434/v1", "modelo": "<modelo baixado no Ollama>", "funcao": "...", "instrucoes": "..." },
-    "com_n8n":      { "webhook": "https://seu-n8n.exemplo.com/webhook/agente", "funcao": "..." }
+    "com_openai": {
+      "provedor": "openai",
+      "modelo": "<nome do modelo no painel da OpenAI>",
+      "funcao": "...",
+      "instrucoes": "..."
+    },
+    "com_gemini": {
+      "provedor": "gemini",
+      "modelo": "<nome do modelo no Google AI Studio>",
+      "funcao": "...",
+      "instrucoes": "..."
+    },
+    "com_openrouter": {
+      "provedor": "compativel",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "chaveEnv": "OPENROUTER_API_KEY",
+      "modelo": "<id do modelo no OpenRouter>",
+      "funcao": "...",
+      "instrucoes": "..."
+    },
+    "com_ollama_local": {
+      "provedor": "compativel",
+      "baseUrl": "http://localhost:11434/v1",
+      "modelo": "<modelo baixado no Ollama>",
+      "funcao": "...",
+      "instrucoes": "..."
+    },
+    "com_n8n": {
+      "webhook": "https://seu-n8n.exemplo.com/webhook/agente",
+      "funcao": "..."
+    }
   }
 }

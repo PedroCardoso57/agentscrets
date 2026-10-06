@@ -13,6 +13,7 @@
 //   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
 //   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
 //   MOTORES_ARQUIVO   caminho do motores.json (padrão ./motores.json)
+//   DOCUMENTADOR      agente que mantém a documentação viva (padrão: redator); DOC_INTERVALO_MIN (padrão 3)
 //   LAYA_URL          servidor do Laya, que decide o agente das ordens "Automático" (ex.: http://laya:8000)
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   chaves das IAs dos motores embutidos
 //
@@ -33,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { criarMotores } from './motores/index.js';
 import { criarDecisor } from './motores/decisor.js';
+import { criarDocumentacao } from './motores/documentacao.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -125,6 +127,10 @@ async function lerCorpo(req) {
 
 function transmitir(evento, dados) {
   agendarSalvar(); // tudo que é transmitido mudou o estado
+  transmitirSemSalvar(evento, dados);
+}
+
+function transmitirSemSalvar(evento, dados) {
   const linha = (evento ? `event: ${evento}\n` : '') + `data: ${JSON.stringify(dados)}\n\n`;
   for (const c of clientes) c.write(linha);
 }
@@ -149,13 +155,18 @@ function marcarEntregue(ordem, agente) {
 // extra: { motor, ms, erro } — de qual IA veio e quanto demorou, para o relatório
 function registrarResposta(ordem, agente, texto, extra = {}) {
   ordem.respostas.push({ agente, texto: String(texto).slice(0, 20000), em: new Date().toISOString(), ...extra });
+  // vira evento da documentação viva (o trecho basta para o documentador resumir)
+  documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`);
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
 function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
-  if (decisao) ordem.decisao = decisao; // quem escolheu o agente (o Laya) e com que certeza
+  if (decisao) {
+    ordem.decisao = decisao; // quem escolheu o agente (o Laya) e com que certeza
+    documentacao?.registrar(`Crânio (Laya) decidiu: "${ordem.texto.slice(0, 200)}" vai para ${decisao.agente} (${Math.round((decisao.confianca || 0) * 100)}% de certeza${decisao.urgencia ? `, urgência ${decisao.urgencia}` : ''}${decisao.incerto ? `; em dúvida com ${decisao.escolhaOriginal}` : ''})`);
+  }
   ordens.push(ordem);
   if (ordens.length > MAX_ORDENS) ordens.shift();
   transmitir('ordem', ordem);
@@ -164,7 +175,16 @@ function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
 }
 
 const decisor = criarDecisor();
+let documentacao = null; // criada logo abaixo, depois dos motores
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
+documentacao = criarDocumentacao({
+  dadosDir: DADOS_DIR,
+  equipe: () => motores.equipe(),
+  rotulo: (c) => motores.rotulo(c),
+  naFila: (id, trabalho) => motores.naFila(id, trabalho),
+  registrarStatus,
+  transmitir: (evento, dados) => transmitirSemSalvar(evento, dados),
+});
 
 // ---------- rotas ----------
 
@@ -227,6 +247,9 @@ async function atender(req, res) {
     }
   }
 
+  if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
+  if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
+
   if (rota === '/api/decisor') return enviarJSON(res, 200, { ativo: decisor.ativo(), online: await decisor.online(), nome: 'Laya' });
 
   if (rota === '/api/ordens' && req.method === 'GET') return enviarJSON(res, 200, ordens.slice(-50));
@@ -270,7 +293,9 @@ async function atender(req, res) {
     try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
     try {
       if (motor[2]) return enviarJSON(res, 200, await motores.testar(motor[1], dados));
-      return enviarJSON(res, 200, { ok: true, config: await motores.salvarAgente(motor[1], dados) });
+      const config = await motores.salvarAgente(motor[1], dados);
+      documentacao.registrar(`Equipe: ${motor[1]} agora usa ${motores.rotulo(config)}${config.funcao ? ` (função: ${config.funcao})` : ''}`);
+      return enviarJSON(res, 200, { ok: true, config });
     } catch (erro) {
       return enviarJSON(res, 400, { erro: erro.message });
     }
@@ -289,6 +314,7 @@ async function atender(req, res) {
     if (![1, -1, 0].includes(dados.nota)) return enviarJSON(res, 400, { erro: 'nota deve ser 1 (bom), -1 (ruim) ou 0 (limpar)' });
     if (dados.nota === 0) { delete resp.nota; delete resp.comentario; } else {
       resp.nota = dados.nota;
+      documentacao.registrar(`Avaliação do chefe: ${dados.nota === 1 ? '👍 boa' : '👎 ruim'} para a resposta de ${resp.agente} em "${ordem.texto.slice(0, 150)}"${typeof dados.comentario === 'string' && dados.comentario.trim() ? ` — comentário: ${dados.comentario.trim().slice(0, 300)}` : ''}`);
       resp.comentario = typeof dados.comentario === 'string' ? dados.comentario.trim().slice(0, 500) : resp.comentario;
       if (!resp.comentario) delete resp.comentario;
     }
@@ -364,6 +390,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 }
 
 await carregar();
+await documentacao.carregar();
 motores.iniciar(estado);
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {
