@@ -167,5 +167,12 @@ export function criarSupervisor({ ordens, equipe, redespachar, criarOrdem, regis
     relogio.unref?.();
   }
 
-  return { iniciar, conferir, agenteMudou, tentarAgora, concluida, falhou };
+  // Há um plano do Tech Lead ainda em andamento neste projeto (última semana)?
+  function planoAberto(cliente) {
+    const semana = Date.now() - 7 * 24 * 3600 * 1000;
+    return ordens.some((o) => o.cliente === cliente && !o.pai && !o.consolidacao && !o.consolidada
+      && Date.parse(o.criadaEm) > semana && filhosDe(o).length && !concluida(o));
+  }
+
+  return { iniciar, conferir, agenteMudou, tentarAgora, concluida, falhou, planoAberto };
 }

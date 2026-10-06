@@ -124,6 +124,54 @@ function pintarMural() {
   mural.material.map.needsUpdate = true;
 }
 
+// TV da área de reunião: os números do dia, no estilo do painel
+let dadosTV = { entregas: 0, trabalhando: 0, erros: 0, proxima: '—', projetos: 0 };
+function pintarTV() {
+  const tv = AMBIENTE.tv;
+  if (!tv) return;
+  const c = tv.userData.canvas;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0c0c0f'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = AMBIENTE.marca.cor; ctx.fillRect(0, 0, c.width, 8);
+  ctx.fillStyle = '#f4f4f5'; ctx.font = `800 26px ${FONTE}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('HOJE', 24, 24);
+  ctx.fillStyle = '#a1a1aa'; ctx.font = `600 16px ${FONTE}`;
+  ctx.fillText(new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'America/Sao_Paulo' }), 100, 32);
+  const kpis = [['entregas', dadosTV.entregas, '#3fb27f'], ['trabalhando', dadosTV.trabalhando, '#4c8dff'], ['erros', dadosTV.erros, dadosTV.erros ? '#ff4d57' : '#a1a1aa'], ['projetos', dadosTV.projetos, '#e0b23c']];
+  kpis.forEach(([rotulo, valor, cor], i) => {
+    const x = 24 + i * 122;
+    ctx.fillStyle = '#18181b'; ctx.fillRect(x, 78, 110, 110);
+    ctx.fillStyle = cor; ctx.font = `800 52px ${FONTE}`; ctx.textAlign = 'center';
+    ctx.fillText(String(valor), x + 55, 92);
+    ctx.fillStyle = '#a1a1aa'; ctx.font = `600 14px ${FONTE}`;
+    ctx.fillText(rotulo, x + 55, 158);
+  });
+  ctx.textAlign = 'left'; ctx.fillStyle = '#a1a1aa'; ctx.font = `600 15px ${FONTE}`;
+  ctx.fillText('Próxima rotina', 24, 214);
+  ctx.fillStyle = '#f4f4f5'; ctx.font = `700 20px ${FONTE}`;
+  ctx.fillText(String(dadosTV.proxima).slice(0, 40), 24, 238);
+  tv.material.map.needsUpdate = true;
+}
+
+export function definirPainelTV(dados) {
+  const novo = { ...dadosTV, ...dados };
+  if (JSON.stringify(novo) === JSON.stringify(dadosTV)) return;
+  dadosTV = novo;
+  pintarTV();
+}
+
+// vapor subindo da cafeteira
+export function animarAmbiente(dt, t) {
+  const v = AMBIENTE.vapor;
+  if (!v) return;
+  for (const bolha of v.children) {
+    const f = (t * 0.35 + bolha.userData.fase) % 1;
+    bolha.position.set(Math.sin((f + bolha.userData.fase) * 9) * 0.03, f * 0.4, 0);
+    bolha.scale.setScalar(0.6 + f * 1.6);
+    bolha.material.opacity = 0.3 * (1 - f);
+  }
+}
+
 export function definirClientesMural(nomes) {
   AMBIENTE.clientes = nomes;
   pintarMural();
@@ -321,17 +369,68 @@ export function criarSala(totalAgentes) {
   sala.add(estante(xEsq + 0.3, cz + profundidade / 2 - 2.2));
   sala.add(pendente(cx + largura / 2 - 2.2, zFundo + 1.6, 3.1));
 
-  // copa: mesa com cafeteira, bebedouro e sofá
-  const copa = new THREE.Group();
-  copa.position.set(cx + largura / 2 - 2.2, 0, zFundo + 1.2);
-  copa.add(caixa(1.8, 0.9, 0.6, mat('#6b4f3a'), 0, 0.45, 0));
-  copa.add(caixa(0.35, 0.45, 0.3, mat('#222'), -0.4, 1.12, 0));
-  copa.add(cilindro(0.05, 0.04, 0.1, mat('#ffffff'), -0.1, 0.95, 0.1));
-  copa.add(cilindro(0.05, 0.04, 0.1, mat('#e5484d'), 0.05, 0.95, 0.12));
-  copa.add(cilindro(0.18, 0.18, 1.1, mat('#d8dde6'), 0.65, 1.45, 0));
-  copa.add(cilindro(0.16, 0.16, 0.45, mat('#7fc8ff', { transparent: true, opacity: 0.7 }), 0.65, 2.2, 0));
-  sala.add(copa);
+  const xDir = cx + largura / 2;
+  const zFrente = cz + profundidade / 2;
+  const V = (x, z) => new THREE.Vector3(x, 0, z);
+  // pontos aonde os agentes vão nas pausas (no mundo): pos = onde ficar, rot = para onde olhar
+  const pontos = { copa: [], cafe: [], mesaAlta: [], sofa: [], janela: [], reuniao: [], estante: [] };
 
+  // ---- copa: balcão com cafeteira e pia, geladeira, bebedouro e mesa alta com banquetas ----
+  const copa = new THREE.Group();
+  copa.position.set(xDir - 2.3, 0, zFundo + 0.45);
+  const armario = mat('#26262b', { roughness: 0.6 });
+  copa.add(caixa(3.0, 0.88, 0.6, armario, 0, 0.44, 0)); // balcão
+  copa.add(caixa(3.04, 0.05, 0.64, mat('#e7e5e4', { roughness: 0.35 }), 0, 0.905, 0)); // tampo claro
+  for (let i = 0; i < 4; i++) copa.add(caixa(0.02, 0.5, 0.01, mat('#3f3f46'), -1.1 + i * 0.73, 0.5, 0.305)); // portas
+  copa.add(caixa(3.0, 0.7, 0.3, armario, 0, 2.0, -0.15)); // armário alto
+  // cafeteira (com vapor) e xícaras
+  const cafeteira = new THREE.Group();
+  cafeteira.position.set(-0.9, 0.93, -0.05);
+  cafeteira.add(caixa(0.36, 0.45, 0.32, mat('#111', { metalness: 0.4, roughness: 0.4 }), 0, 0.225, 0));
+  cafeteira.add(caixa(0.3, 0.06, 0.05, mat('#e11d2a', { roughness: 0.4 }), 0, 0.36, 0.17));
+  cafeteira.add(cilindro(0.04, 0.035, 0.08, mat('#f5f5f4'), 0, 0.05, 0.12));
+  copa.add(cafeteira);
+  const vapor = new THREE.Group();
+  vapor.position.set(-0.9, 1.2, 0.07);
+  for (let i = 0; i < 4; i++) {
+    const v = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, depthWrite: false }));
+    v.userData.fase = i / 4;
+    vapor.add(v);
+  }
+  copa.add(vapor);
+  AMBIENTE.vapor = vapor;
+  for (let i = 0; i < 3; i++) copa.add(cilindro(0.04, 0.035, 0.08, mat(['#f5f5f4', '#e11d2a', '#18181b'][i]), -0.45 + i * 0.12, 0.97, 0.12));
+  // pia
+  copa.add(caixa(0.55, 0.02, 0.4, mat('#a1a1aa', { metalness: 0.7, roughness: 0.3 }), 0.55, 0.935, 0));
+  copa.add(cilindro(0.015, 0.015, 0.25, mat('#d4d4d8', { metalness: 0.8, roughness: 0.2 }), 0.55, 1.05, -0.15, 8));
+  sala.add(copa);
+  // geladeira
+  sala.add(caixa(0.75, 1.85, 0.7, mat('#d4d4d8', { metalness: 0.3, roughness: 0.4 }), xDir - 0.45, 0.925, zFundo + 0.5));
+  sala.add(caixa(0.03, 0.5, 0.04, mat('#52525b'), xDir - 0.75, 1.2, zFundo + 0.87));
+  // bebedouro com galão
+  const bebedouro = new THREE.Group();
+  bebedouro.position.set(xDir - 4.3, 0, zFundo + 0.45);
+  bebedouro.add(caixa(0.4, 1.0, 0.4, mat('#f4f4f5', { roughness: 0.5 }), 0, 0.5, 0));
+  bebedouro.add(caixa(0.12, 0.06, 0.05, mat('#60a5fa'), 0, 0.85, 0.22));
+  bebedouro.add(cilindro(0.17, 0.17, 0.42, mat('#7fc8ff', { transparent: true, opacity: 0.55, roughness: 0.1 }), 0, 1.22, 0));
+  bebedouro.add(cilindro(0.06, 0.06, 0.05, mat('#7fc8ff', { transparent: true, opacity: 0.55 }), 0, 1.46, 0));
+  sala.add(bebedouro);
+  pontos.copa.push({ pos: V(xDir - 4.3, zFundo + 1.15), rot: Math.PI }, { pos: V(xDir - 3.6, zFundo + 1.5), rot: -Math.PI * 0.75 });
+  pontos.cafe.push({ pos: V(xDir - 3.2, zFundo + 1.1), rot: Math.PI }, { pos: V(xDir - 2.5, zFundo + 1.3), rot: -Math.PI * 0.8 });
+  // mesa alta (bistrô) com duas banquetas
+  const mesaAlta = new THREE.Group();
+  mesaAlta.position.set(xDir - 2.3, 0, zFundo + 2.6);
+  mesaAlta.add(cilindro(0.38, 0.38, 0.04, mat('#e7e5e4', { roughness: 0.35 }), 0, 1.05, 0, 28));
+  mesaAlta.add(cilindro(0.04, 0.04, 1.03, mat('#18181b', { metalness: 0.5 }), 0, 0.52, 0, 10));
+  mesaAlta.add(cilindro(0.25, 0.25, 0.03, mat('#18181b', { metalness: 0.5 }), 0, 0.015, 0, 20));
+  for (const sx of [-1, 1]) {
+    mesaAlta.add(cilindro(0.17, 0.17, 0.05, mat('#e11d2a', { roughness: 0.6 }), sx * 0.62, 0.72, 0, 18));
+    mesaAlta.add(cilindro(0.025, 0.025, 0.7, mat('#18181b', { metalness: 0.5 }), sx * 0.62, 0.35, 0, 8));
+  }
+  sala.add(mesaAlta);
+  pontos.mesaAlta.push({ pos: V(xDir - 2.95, zFundo + 2.6), rot: Math.PI / 2 }, { pos: V(xDir - 1.65, zFundo + 2.6), rot: -Math.PI / 2 });
+
+  // ---- sofá vinho (parede da marca) ----
   const sofa = new THREE.Group();
   sofa.position.set(xEsq + 1.0, 0, zFundo + 2.6);
   sofa.rotation.y = Math.PI / 2;
@@ -340,15 +439,55 @@ export function criarSala(totalAgentes) {
   sofa.add(caixa(2.2, 0.6, 0.2, tecido, 0, 0.7, -0.3));
   sofa.add(caixa(0.2, 0.55, 0.8, tecido, -1.1, 0.45, 0));
   sofa.add(caixa(0.2, 0.55, 0.8, tecido, 1.1, 0.45, 0));
+  for (const sx of [-0.55, 0.55]) sofa.add(caixa(0.95, 0.12, 0.6, mat('#8f2a31', { roughness: 0.95 }), sx, 0.55, 0.05)); // almofadas
   sala.add(sofa);
+  pontos.sofa.push({ pos: V(xEsq + 1.05, zFundo + 2.05), rot: Math.PI / 2, sentar: true }, { pos: V(xEsq + 1.05, zFundo + 3.15), rot: Math.PI / 2, sentar: true });
+
+  // ---- área de reunião: mesa redonda, cadeiras e TV com os números do dia ----
+  const reuniao = new THREE.Group();
+  const centroReuniao = V(xDir - 2.6, zFrente - 2.6);
+  reuniao.position.copy(centroReuniao);
+  reuniao.add(cilindro(0.75, 0.75, 0.05, mat('#e7e5e4', { roughness: 0.4 }), 0, 0.76, 0, 32));
+  reuniao.add(cilindro(0.06, 0.06, 0.74, mat('#18181b', { metalness: 0.5 }), 0, 0.37, 0, 10));
+  reuniao.add(cilindro(0.35, 0.35, 0.03, mat('#18181b', { metalness: 0.5 }), 0, 0.015, 0, 20));
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const cadeira = new THREE.Group();
+    cadeira.position.set(Math.sin(a) * 1.15, 0, Math.cos(a) * 1.15);
+    cadeira.rotation.y = a + Math.PI; // de frente para a mesa
+    cadeira.add(caixa(0.45, 0.06, 0.45, mat('#27272a'), 0, 0.46, 0));
+    cadeira.add(caixa(0.45, 0.5, 0.06, mat('#27272a'), 0, 0.74, -0.22));
+    cadeira.add(cilindro(0.03, 0.03, 0.44, mat('#18181b', { metalness: 0.5 }), 0, 0.22, 0, 8));
+    reuniao.add(cadeira);
+    pontos.reuniao.push({ pos: centroReuniao.clone().add(V(Math.sin(a) * 1.15, Math.cos(a) * 1.15)), rot: a + Math.PI, sentar: true });
+  }
+  sala.add(reuniao);
+  // TV num pedestal, virada para a mesa
+  const tv = new THREE.Group();
+  tv.position.set(centroReuniao.x, 0, centroReuniao.z - 1.95); // atrás da mesa, virada para a sala
+  tv.rotation.y = 0;
+  tv.add(cilindro(0.04, 0.04, 1.3, mat('#18181b', { metalness: 0.6 }), 0, 0.65, 0, 8));
+  tv.add(caixa(0.6, 0.04, 0.4, mat('#18181b', { metalness: 0.6 }), 0, 0.02, 0));
+  tv.add(caixa(1.5, 0.88, 0.06, mat('#0a0a0c'), 0, 1.55, 0));
+  const telaTV = canvasPlano(1.42, 0.8, 512, 288);
+  telaTV.position.set(0, 1.55, 0.031);
+  tv.add(telaTV);
+  sala.add(tv);
+  AMBIENTE.tv = telaTV;
+  pintarTV();
+
+  // janelas (olhar a vista) e estante (folhear um livro)
+  for (const x of [-1.5, 1.5]) pontos.janela.push({ pos: V(cx + x, zFundo + 0.9), rot: Math.PI });
+  pontos.estante.push({ pos: V(xEsq + 1.2, zFrente - 2.2), rot: -Math.PI / 2 });
 
   // plantas nos cantos
   sala.add(planta(xEsq + 0.6, zFundo + 0.6, 1.2));
-  sala.add(planta(cx + largura / 2 - 0.6, zFundo + 2.4, 1.0));
-  sala.add(planta(cx + largura / 2 - 0.6, cz + profundidade / 2 - 0.8, 0.9)); // o canto da frente à esquerda é do Crânio
-  sala.add(planta(CORREDOR_X + 1.3, cz - 1, 0.8));
+  sala.add(planta(xDir - 0.6, zFundo + 2.0, 1.0));
+  sala.add(planta(xDir - 0.6, zFrente - 0.8, 0.9));
+  sala.add(planta(CORREDOR_X + 0.7, cz - 0.5, 0.8));
+  sala.add(planta(xEsq + 0.6, zFrente - 0.6, 1.0));
 
-  return { grupo: sala, centro: new THREE.Vector3(cx, 0, cz), largura, profundidade };
+  return { grupo: sala, centro: new THREE.Vector3(cx, 0, cz), largura, profundidade, pontos };
 }
 
 function janela(x, z) {

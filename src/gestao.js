@@ -99,6 +99,42 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
   let rotinas = [];
   let editando = null; // rotina aberta no formulário (null = nova)
 
+  // Piloto automático do Tech Lead: decide sozinho o próximo passo de cada projeto.
+  const SITUACAO = { parado: 'decide na próxima conferência', ocupado: 'time trabalhando', esperando: 'aguardando novidade ou o intervalo' };
+  async function painelAutopiloto() {
+    let a;
+    try { a = await api('api/autopiloto'); } catch { return ''; }
+    const ativo = el('input', { type: 'checkbox', checked: a.ativo });
+    const intervalo = el('input', { type: 'number', min: 15, max: 1440, value: a.intervaloMin });
+    const maximo = el('input', { type: 'number', min: 1, max: 100, value: a.maxPlanosDia });
+    const inicio = el('input', { type: 'number', min: 0, max: 23, value: a.inicio });
+    const fim = el('input', { type: 'number', min: 0, max: 24, value: a.fim });
+    const status = el('span', { class: 'suave' });
+    const salvar = async () => {
+      try {
+        await api('api/autopiloto', { ativo: ativo.checked, intervaloMin: intervalo.value, maxPlanosDia: maximo.value, inicio: inicio.value, fim: fim.value });
+        status.textContent = '✓ salvo';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+        caixa.classList.toggle('desligado', !ativo.checked);
+      } catch (erro) { status.textContent = `✗ ${erro.message}`; }
+    };
+    for (const i of [ativo, intervalo, maximo, inicio, fim]) i.addEventListener('change', salvar);
+    const projetos = a.projetos.length
+      ? el('ul', { class: 'projetos-piloto' }, a.projetos.map((p) => el('li', {}, el('b', {}, p.nome), ` · ${SITUACAO[p.situacao] || p.situacao}${p.ultimaVez ? ` · última decisão ${new Date(p.ultimaVez).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}`)))
+      : el('p', { class: 'suave' }, 'Cadastre os projetos em 📇 Clientes: o piloto automático trabalha em cima de cada ficha.');
+    const caixa = el('section', { class: `autopiloto${a.ativo ? '' : ' desligado'}` },
+      el('label', { class: 'linha titulo-piloto' }, ativo, el('span', {}, '🤖 Piloto automático do Tech Lead'), status),
+      el('p', { class: 'suave' }, 'Sem você dar ordens: o Tech Lead revisa cada projeto (ficha, documentação, entregas e problemas), decide o próximo passo e põe o time para trabalhar. Quando não há o que fazer, ele espera alguma novidade.'),
+      el('div', { class: 'campos-piloto' },
+        el('label', {}, el('span', {}, 'A cada (min)'), intervalo),
+        el('label', {}, el('span', {}, 'Máx. planos/dia'), maximo),
+        el('label', {}, el('span', {}, 'Das (h)'), inicio),
+        el('label', {}, el('span', {}, 'Até (h)'), fim),
+        el('span', { class: 'suave' }, `Hoje: ${a.planosHoje}/${a.maxPlanosDia}`)),
+      projetos);
+    return caixa;
+  }
+
   async function desenharRotinas() {
     const corpo = dlgRotinas.querySelector('.corpo');
     try { rotinas = await api('api/rotinas'); } catch (erro) { corpo.replaceChildren(el('p', { class: 'erro' }, erro.message)); return; }
@@ -129,7 +165,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
         await desenharRotinas();
       } catch (erro) { alert(erro.message); }
     } }, '☀ Criar "Resumo de ontem" todo dia às 8h');
-    corpo.replaceChildren(atalho || '', el('div', { class: 'cfg-grade rotinas' }, el('ul', { class: 'lista-rotinas' }, itens), formularioRotina(editando)),
+    corpo.replaceChildren(await painelAutopiloto(), atalho || '', el('div', { class: 'cfg-grade rotinas' }, el('ul', { class: 'lista-rotinas' }, itens), formularioRotina(editando)),
       el('p', { class: 'suave' }, 'As entregas das rotinas aparecem no painel, em 📦 Entregas e no Telegram (se estiver conectado).'));
   }
 

@@ -423,3 +423,15 @@ dialog button.link { background: none; border: none; color: #ff8a92; cursor: poi
 #lista-ordens .supervisor { margin-top: 5px; font-size: 11px; color: #ffb4b9; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 #lista-ordens .supervisor button { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 7px; cursor: pointer; color: #fff; background: var(--marca); border: none; }
 #lista-ordens .supervisor button:disabled { opacity: .5; }
+
+/* piloto automático */
+.autopiloto { border: 1px solid var(--marca); background: var(--marca-suave); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.autopiloto.desligado { border-color: var(--borda); background: #ffffff06; }
+.autopiloto p { margin: 6px 0; }
+.autopiloto .titulo-piloto { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; }
+.autopiloto .titulo-piloto input { width: auto; }
+.autopiloto .campos-piloto { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 8px 0; }
+.autopiloto .campos-piloto label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--suave); }
+.autopiloto .campos-piloto input { width: 90px; }
+.projetos-piloto { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--suave); }
+.projetos-piloto b { color: var(--texto); }

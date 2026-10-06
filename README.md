@@ -212,6 +212,17 @@ O botão **📄 Documentação** abre os documentos que o **Documentador** mant�
 - Os arquivos ficam em `dados/documentacao.md` (Geral) e `dados/documentacao/<cliente>.md`, cada um com a versão anterior em `.anterior`. Quem já tinha a documentação de antes encontra o conteúdo no Geral.
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=documentador` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
+## Vida no escritório
+
+Quem fica um tempo sem trabalho levanta e faz uma pausa, como num escritório de verdade:
+- pega água no bebedouro ou café na cafeteira (às vezes chama um colega, e eles vão conversar na mesa alta);
+- senta no sofá, olha a vista pela janela ou folheia um livro na estante;
+- reúne dois ou três na mesa de reunião para conversar.
+
+Os balões mostram o papo. No máximo três ficam fora da mesa ao mesmo tempo, e **chegou trabalho, eles voltam na hora**. Para ver as pausas sem esperar, abra com `?pausas=rapido` na URL.
+
+A sala tem copa (balcão, cafeteira com vapor, pia, geladeira, bebedouro e mesa alta com banquetas), área de reunião com uma **TV que mostra os números do dia**, e bonecos que piscam e respiram.
+
 ## Visual e marca
 
 - **Barra lateral** com os menus (no celular vira a barra de baixo); passe o mouse para ver o nome de cada um. ⌂ volta para a visão do escritório todo.
@@ -240,6 +251,16 @@ Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente bu
 Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
 
 **☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Documentador, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
+
+### 🤖 Piloto automático do Tech Lead (você não precisa dar ordens)
+Ligado por padrão. De tempos em tempos, para cada projeto cadastrado em 📇 Clientes, o Tech Lead recebe a ficha, a documentação do projeto, as últimas entregas e os problemas em aberto, **decide sozinho o próximo passo** (até 4 tarefas, na ordem certa) e põe o time para trabalhar, sem pedir permissão. O supervisor acompanha até a entrega final, que chega no painel, no 📦 e no Telegram.
+
+Quando ele não age:
+- já há trabalho em andamento no projeto;
+- da última vez ele disse que não havia o que fazer (por exemplo, "falta o cliente enviar o logo") e nada novo aconteceu desde então. Uma ordem sua, uma entrega ou a ficha alterada contam como novidade; sem novidade, ele olha de novo em 1 dia;
+- o limite de planos do dia foi atingido, ou está fora do horário.
+
+Na janela **🗓 Rotinas** ficam o liga/desliga, o intervalo (padrão: 60 min), o limite por dia (padrão: 8), o horário (padrão: das 8h às 20h, de Brasília) e a situação de cada projeto. Cada plano gasta chamadas de IA do Tech Lead e do time: ajuste o limite à sua cota.
 
 ### 🔁 Supervisor: nenhuma tarefa fica pela metade
 - **Tentativas automáticas:** se uma tarefa dá erro (limite da IA, chave errada, provedor fora do ar) ou é interrompida porque o servidor reiniciou, ela é tentada de novo sozinha. As esperas crescem: 1, 3, 10, 30 e 60 minutos. O cartão fica **com erro** e mostra a próxima tentativa, com o botão **↻ Tentar agora**.
