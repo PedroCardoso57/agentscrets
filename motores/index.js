@@ -21,7 +21,7 @@ const VOLTAR_AO_OCIOSO = 8000;
 const PROVEDORES_VALIDOS = Object.keys(PROVEDORES);
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max'];
 // chaves que a tela de configuração mostra como "configurada / falta"
-const CHAVES_CONHECIDAS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY'];
+const CHAVES_CONHECIDAS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY'];
 
 export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem }) {
   const arquivo = process.env.MOTORES_ARQUIVO || join(raiz, 'motores.json');
@@ -58,7 +58,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     if (c.provedor === 'compativel' && c.baseUrl) {
       // mostra o serviço de verdade em vez de "API compatível"
       const host = new URL(c.baseUrl).host;
-      nome = /groq/.test(host) ? 'Groq' : /openrouter/.test(host) ? 'OpenRouter' : /:11434$/.test(host) ? 'Ollama' : /deepseek/.test(host) ? 'DeepSeek' : host;
+      nome = /groq/.test(host) ? 'Groq' : /openrouter/.test(host) ? 'OpenRouter' : /nvidia/.test(host) ? 'NVIDIA' : /:11434$/.test(host) ? 'Ollama' : /deepseek/.test(host) ? 'DeepSeek' : host;
     }
     return c.modelo ? `${nome} · ${c.modelo}` : nome;
   }
