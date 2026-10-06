@@ -164,8 +164,8 @@ function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
   if (decisao) {
-    ordem.decisao = decisao; // quem escolheu o agente (o Laya) e com que certeza
-    documentacao?.registrar(`Crânio (Laya) decidiu: "${ordem.texto.slice(0, 200)}" vai para ${decisao.agente} (${Math.round((decisao.confianca || 0) * 100)}% de certeza${decisao.urgencia ? `, urgência ${decisao.urgencia}` : ''}${decisao.incerto ? `; em dúvida com ${decisao.escolhaOriginal}` : ''})`);
+    ordem.decisao = decisao; // como o Crânio (Laya) decidiu, com que certeza e urgência
+    documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`);
   }
   ordens.push(ordem);
   if (ordens.length > MAX_ORDENS) ordens.shift();
@@ -175,8 +175,33 @@ function criarOrdem({ para, texto, de = 'chefe', contexto, decisao }) {
 }
 
 const decisor = criarDecisor();
+
+function descreverDecisao(d, ordem) {
+  const pedido = `"${ordem.texto.slice(0, 200)}"`;
+  const certeza = `${Math.round((d.confianca || 0) * 100)}%`;
+  const urg = d.urgencia ? `, urgência ${d.urgencia}` : '';
+  if (d.modo === 'indisponivel') return `fora do ar; ${pedido} seguiu direto para ${ordem.para} (${d.motivo})`;
+  if (d.modo === 'confirmou') return `confirmou ${ordem.para} para ${pedido} (${certeza}${urg})`;
+  if (d.modo === 'alertou') return `o chefe escolheu ${ordem.para} para ${pedido}; o Crânio indicaria ${d.escolhaOriginal} (${certeza}${urg})`;
+  if (d.modo === 'redirecionou') return `redirecionou ${pedido} de ${d.sugerido} para ${ordem.para} (${certeza}${urg})`;
+  return `escolheu ${ordem.para} para ${pedido} (${certeza}${urg}${d.incerto ? `; em dúvida com ${d.escolhaOriginal}` : ''})`;
+}
+
+// Toda decisão passa pelo Crânio: ordens com agente indicado (pelo chefe ou por
+// quem delega) são avaliadas por ele antes de existir. Sem o Laya, seguem direto.
+async function encaminhar({ para, texto, de = 'chefe', contexto }) {
+  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto });
+  let decisao;
+  try {
+    decisao = await decisor.avaliar(texto, motores.equipe(), para, de);
+  } catch (erro) {
+    console.warn(`[crânio] ${erro.message}`);
+    decisao = { por: 'Laya', modo: 'indisponivel', motivo: erro.message.slice(0, 120), agente: para };
+  }
+  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao });
+}
 let documentacao = null; // criada logo abaixo, depois dos motores
-const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem });
+const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)) });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
   equipe: () => motores.equipe(),
@@ -236,7 +261,7 @@ async function atender(req, res) {
     const texto = typeof dados.texto === 'string' ? dados.texto.trim() : '';
     if (!texto) return enviarJSON(res, 400, { erro: 'campo "texto" obrigatório' });
     if (typeof dados.para !== 'string' || !dados.para) return enviarJSON(res, 400, { erro: 'campo "para" obrigatório (id do agente ou "todos")' });
-    if (dados.para !== 'auto') return enviarJSON(res, 201, criarOrdem({ para: dados.para, texto: texto.slice(0, 2000) }));
+    if (dados.para !== 'auto') return enviarJSON(res, 201, await encaminhar({ para: dados.para, texto: texto.slice(0, 2000) }));
     // "Automático": o Laya decide qual agente cuida do pedido
     try {
       const decisao = await decisor.decidir(texto, motores.equipe());

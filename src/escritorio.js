@@ -216,7 +216,7 @@ export function criarEstacao(agente) {
   }
 
   // caneca e luminária de status
-  g.add(cilindro(0.045, 0.04, 0.1, mat(agente.cor), 0.65, altura + 0.075, zCentro - 0.05));
+  if (!agente.chefe) g.add(cilindro(0.045, 0.04, 0.1, mat(agente.cor), 0.65, altura + 0.075, zCentro - 0.05)); // na mesa do chefe fica a bola de cristal
   const lampada = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), new THREE.MeshStandardMaterial({ color: '#8e99ad', emissive: '#8e99ad', emissiveIntensity: 1.2 }));
   lampada.position.set(-0.68, altura + 0.08, zCentro + 0.28);
   g.add(lampada);

@@ -156,9 +156,19 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 
 Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
 
-## Crânio: a sala do Laya, o despachante que decide quem faz cada pedido
+## Crânio: a bola de cristal que decide (Laya)
 
-O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele mora no **Crânio**, uma sala de vidro no canto da frente, ao lado da sua mesa, com um cérebro holográfico que fica aceso quando o Laya está no ar. Mande a ordem para **🧠 Crânio decide (Laya)**: o seu bonequinho vai até o Crânio, o cérebro pulsa e solta um feixe de luz até o agente escolhido (pela função de cada um), um balão mostra a decisão e a urgência, e o bonequinho leva a ordem até esse agente. O painel registra a decisão ("🧠 Crânio escolheu Redator (87% de certeza) · urgência: hoje"). Clicar no Crânio na cena foca a câmera nele. Pedidos grandes, ou quando o Laya fica em dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), vão para o Orquestrador.
+O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele é o **Crânio**, uma bola de cristal em cima da sua mesa, acesa quando o Laya está no ar. **Toda decisão passa por ela:**
+
+| Situação | O que o Crânio faz |
+|---|---|
+| Ordem para **🔮 Crânio decide** | Escolhe o agente pela função de cada um e a urgência; na dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), manda para o Orquestrador. |
+| Você escolhe um agente direto | Confirma, ou registra quem ele indicaria; a sua escolha vale. |
+| O Orquestrador delega uma tarefa | Confirma ou, se tiver certeza de que outro agente é mais adequado, **redireciona**. |
+| Ordem para todos | Segue direto (não há o que decidir). |
+| Laya fora do ar | A ordem segue direto, marcada "Crânio fora do ar". |
+
+Na cena, o seu bonequinho levanta e põe as mãos sobre a bola, ela pulsa e solta um feixe de luz até o agente, e um balão mostra a decisão; as delegações do Orquestrador também soltam o feixe. O painel e a documentação registram cada decisão. Clicar na bola foca a câmera nela.
 
 Para ligar no VPS (precisa de ~3 GB de RAM livres; confira com `free -h`):
 
@@ -287,7 +297,7 @@ src/chefe.js            o seu bonequinho: anda até o agente e entrega a ordem
 src/integracao.js       HTTP/SSE, WebSocket, postMessage, ordens e modo demo
 src/main.js             cena 3D, câmera e painel
 src/configuracao.js     janelas Equipe (trocar IA) e Relatório
-src/cranio.js           a sala do Crânio (Laya) e a animação das decisões
+src/cranio.js           a bola de cristal do Crânio (Laya) e a animação das decisões
 src/documentacao.js     janela da documentação viva
 motores/documentacao.js o Redator mantendo a documentação do projeto
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status

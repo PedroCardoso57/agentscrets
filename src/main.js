@@ -56,10 +56,10 @@ const etiquetaChefe = criarEtiqueta(`★ ${CHEFE.nome}`, 'chefe');
 chefe.boneco.raiz.add(etiquetaChefe);
 etiquetaChefe.element.querySelector('.placa i').style.background = '#f4d35e';
 
-// o Crânio: sala do Laya, o decisor (só aparece quando o Laya está configurado)
+// o Crânio: bola de cristal do Laya, o decisor, na mesa do chefe (só aparece com o Laya configurado)
 const cranio = new Cranio();
 cranio.grupo.visible = false;
-cena.add(cranio.grupo);
+cranio.anexar(chefe.grupo);
 
 function criarEtiqueta(nome, classe = '') {
   const el = document.createElement('div');
@@ -86,7 +86,6 @@ function montar() {
   Object.assign(sol.shadow.camera, { left: -s, right: s, top: s, bottom: -s, far: 50 });
   sol.shadow.camera.updateProjectionMatrix();
   chefe.posicionar(agentes.length);
-  cranio.posicionar(agentes.length);
 
   agentes.forEach((agente, i) => {
     const { x, z, rot } = posicaoEstacao(i);
@@ -118,7 +117,7 @@ function montarPainel() {
   lista.innerHTML = '';
   const selecionado = destinatario.value;
   destinatario.innerHTML = '<option value="todos">Para: todos</option>';
-  if (decisorAtivo) destinatario.prepend(new Option('🧠 Crânio decide (Laya)', 'auto'));
+  if (decisorAtivo) destinatario.prepend(new Option('🔮 Crânio decide (Laya)', 'auto'));
   for (const [id, e] of estacoes) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
@@ -171,15 +170,14 @@ function mostrarStatus(id) {
 let animacaoCamera = null;
 function enquadrarTudo() {
   const { centro, largura, profundidade } = sala;
-  const desvio = cranio.grupo.visible ? 3 : 0; // puxa para a esquerda para caber o Crânio
-  irPara(new THREE.Vector3(centro.x - 1 - desvio, 0.8, centro.z + desvio * 0.4), new THREE.Vector3(centro.x + largura * 0.35 - desvio, Math.max(largura, profundidade) * 0.66, centro.z + profundidade * 0.85 + desvio));
+  irPara(new THREE.Vector3(centro.x - 1, 0.8, centro.z), new THREE.Vector3(centro.x + largura * 0.35, Math.max(largura, profundidade) * 0.62, centro.z + profundidade * 0.85));
 }
 
-// câmera de frente para a sala do Crânio
+// câmera na mesa do chefe, de frente para a bola de cristal
 function focarCranio() {
   for (const x of estacoes.values()) x.item.classList.remove('foco');
-  const alvo = cranio.grupo.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.3, 0));
-  irPara(alvo, alvo.clone().add(new THREE.Vector3(3.6, 2.2, -4.4))); // pela frente de vidro, acima da placa
+  const alvo = cranio.posicaoMundo().add(new THREE.Vector3(0, 0.15, 0));
+  irPara(alvo, alvo.clone().add(new THREE.Vector3(-1.5, 1.0, 0.5))); // pelo lado da bola, por cima: o monitor não tapa
 }
 
 function focar(id) {
@@ -291,11 +289,8 @@ function renderizarOrdens() {
       // quem decidiu o agente (o Laya), com que certeza e a urgência
       const d = document.createElement('div');
       d.className = 'decisao';
-      const certeza = `${Math.round((o.decisao.confianca || 0) * 100)}%`;
-      d.textContent = o.decisao.incerto
-        ? `🧠 Crânio ficou em dúvida (${nomeDe(o.decisao.escolhaOriginal)}, ${certeza}) e mandou para ${nomeDe(o.decisao.agente)}`
-        : `🧠 Crânio escolheu ${nomeDe(o.decisao.agente)} (${certeza} de certeza)`;
-      if (o.decisao.urgencia) d.textContent += ` · urgência: ${o.decisao.urgencia}`;
+      d.textContent = textoDecisao(o.decisao);
+      d.classList.toggle('alerta', ['alertou', 'redirecionou', 'indisponivel'].includes(o.decisao.modo));
       li.appendChild(d);
     }
     o.respostas.forEach((r, indice) => {
@@ -309,6 +304,25 @@ function renderizarOrdens() {
     });
     listaOrdens.appendChild(li);
   }
+}
+
+// Como o Crânio decidiu, em uma linha
+function textoDecisao(dc) {
+  const certeza = `${Math.round((dc.confianca || 0) * 100)}%`;
+  let t;
+  if (dc.modo === 'indisponivel') return '🔮 Crânio fora do ar: a ordem seguiu direto';
+  if (dc.modo === 'confirmou') t = `🔮 Crânio confirmou ${nomeDe(dc.agente)} (${certeza})`;
+  else if (dc.modo === 'alertou') t = `🔮 Você escolheu ${nomeDe(dc.agente)}; o Crânio indicaria ${nomeDe(dc.escolhaOriginal)} (${certeza})`;
+  else if (dc.modo === 'redirecionou') t = `🔮 Crânio redirecionou de ${nomeDe(dc.sugerido)} para ${nomeDe(dc.agente)} (${certeza})`;
+  else if (dc.incerto) t = `🔮 Crânio ficou em dúvida (${nomeDe(dc.escolhaOriginal)}, ${certeza}) e mandou para ${nomeDe(dc.agente)}`;
+  else t = `🔮 Crânio escolheu ${nomeDe(dc.agente)} (${certeza} de certeza)`;
+  return dc.urgencia ? `${t} · urgência: ${dc.urgencia}` : t;
+}
+
+function resumoCranio(dc) {
+  if (dc.modo === 'alertou') return `${nomeDe(dc.agente)} (chefe) · eu indicaria ${nomeDe(dc.escolhaOriginal)}`;
+  if (dc.modo === 'redirecionou') return `${nomeDe(dc.sugerido)} → ${nomeDe(dc.agente)} · ${Math.round((dc.confianca || 0) * 100)}%`;
+  return `${nomeDe(dc.agente)} · ${Math.round((dc.confianca || 0) * 100)}%${dc.urgencia ? ` · ${dc.urgencia}` : ''}`;
 }
 
 // 👍 / 👎 em cada resposta, com a IA que respondeu e o tempo — base do relatório
@@ -368,7 +382,14 @@ function aoOrdem(ordem, { nova }) {
   }
 
   if (!nova) return;
-  if (ordem.de && ordem.de !== 'chefe') return; // delegada entre agentes: o seu bonequinho não precisa ir
+  if (ordem.de && ordem.de !== 'chefe') {
+    // delegada entre agentes: o seu bonequinho não vai, mas a decisão passa pelo Crânio (feixe até o agente)
+    const e = estacoes.get(ordem.para);
+    if (ordem.decisao && ordem.decisao.modo !== 'indisponivel' && cranio.grupo.visible && e) {
+      cranio.decidir(e.boneco.raiz.getWorldPosition(new THREE.Vector3()), resumoCranio(ordem.decisao));
+    }
+    return;
+  }
   if (ordem.local) avisar('Sem servidor, a ordem fica só na simulação. Rode "node servidor.js" para ela chegar aos seus motores.');
   else avisar(chefe.ocupado() ? 'Ordem na fila: o seu bonequinho entrega assim que terminar a anterior.' : '');
   const todos = ordem.para === 'todos';
@@ -377,11 +398,10 @@ function aoOrdem(ordem, { nova }) {
   const balao = etiquetaChefe.element.querySelector('.balao');
   // ordem decidida pelo Crânio: o bonequinho passa lá antes, e o Crânio mostra a decisão
   let parada;
-  if (ordem.decisao && cranio.grupo.visible && alvos.length === 1) {
-    const d = ordem.decisao;
-    const resumo = `${nomeDe(d.agente)} · ${Math.round((d.confianca || 0) * 100)}%${d.urgencia ? ` · ${d.urgencia}` : ''}`;
+  if (ordem.decisao && ordem.decisao.modo !== 'indisponivel' && cranio.grupo.visible && alvos.length === 1) {
+    const resumo = resumoCranio(ordem.decisao);
     parada = {
-      ...cranio.parada(),
+      ...cranio.parada(chefe.grupo),
       tempo: 2.4,
       aoChegar: () => cranio.decidir(alvos[0].boneco.raiz.getWorldPosition(new THREE.Vector3()), resumo),
     };
@@ -411,10 +431,8 @@ const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoDecisor({ ativo, online }) {
-    const mudou = cranio.grupo.visible !== ativo;
     cranio.grupo.visible = ativo;
     cranio.definirOnline(online);
-    if (mudou) enquadrarTudo(); // reenquadra para caber (ou não) a sala do Crânio
     if (ativo === decisorAtivo) return;
     decisorAtivo = ativo;
     montarPainel();
