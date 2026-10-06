@@ -30,7 +30,18 @@ let clienteAnthropic = null;
 // modelos que aceitam o fallback automático do servidor quando a IA recusa um pedido
 const COM_FALLBACK = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
-async function anthropic({ modelo = 'claude-opus-5-5', instrucoes, pedido, esforco = 'medium', maxTokens = 32000 }) {
+// Lista "Fontes:" no fim da resposta (sem repetir endereços).
+function comFontes(texto, fontes) {
+  const vistas = new Map();
+  for (const f of fontes) if (f.url && !vistas.has(f.url)) vistas.set(f.url, f.titulo || f.url);
+  if (!vistas.size) return texto;
+  return `${texto}\n\nFontes:\n${[...vistas].slice(0, 8).map(([url, titulo]) => `- ${titulo}: ${url}`).join('\n')}`;
+}
+
+// a busca com filtragem dinâmica só existe nos modelos mais novos; os outros usam a básica
+const BUSCA_ANTIGA = /^claude-(haiku|3|sonnet-4-5|opus-4-5|opus-4-1|opus-4-0|sonnet-4-0)/;
+
+async function anthropic({ modelo = 'claude-opus-5-5', instrucoes, pedido, esforco = 'medium', maxTokens = 32000, internet = false }) {
   clienteAnthropic ??= new Anthropic({ apiKey: chave('ANTHROPIC_API_KEY', 'Claude'), timeout: TEMPO_MAXIMO });
   const params = {
     model: modelo,
@@ -43,12 +54,25 @@ async function anthropic({ modelo = 'claude-opus-5-5', instrucoes, pedido, esfor
     params.betas = ['server-side-fallback-2026-07-01'];
     params.fallbacks = 'default';
   }
+  if (internet) params.tools = [{ type: BUSCA_ANTIGA.test(modelo) ? 'web_search_20250305' : 'web_search_20260209', name: 'web_search', max_uses: 5 }];
   // streaming evita estourar o tempo de requisição em respostas longas
-  const msg = await clienteAnthropic.beta.messages.stream(params).finalMessage();
+  let msg = await clienteAnthropic.beta.messages.stream(params).finalMessage();
+  const blocos = [...msg.content];
+  // com busca, o servidor pode pausar a vez (pause_turn): reenvia o que veio e ele continua de onde parou
+  for (let i = 0; msg.stop_reason === 'pause_turn' && i < 4; i++) {
+    params.messages = [params.messages[0], { role: 'assistant', content: blocos.slice() }];
+    msg = await clienteAnthropic.beta.messages.stream(params).finalMessage();
+    blocos.push(...msg.content);
+  }
   if (msg.stop_reason === 'refusal') throw new Error('a IA recusou esta tarefa');
-  const texto = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-  if (msg.stop_reason === 'max_tokens') return `${texto}\n\n[resposta cortada: limite de tamanho atingido]`;
-  return texto;
+  const texto = blocos.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+  // fontes: primeiro as citadas no texto; se não houver, as encontradas na busca
+  const citadas = blocos.flatMap((b) => (b.type === 'text' && b.citations) || []).map((c) => ({ url: c.url, titulo: c.title }));
+  const achadas = blocos.filter((b) => b.type === 'web_search_tool_result' && Array.isArray(b.content))
+    .flatMap((b) => b.content).map((r) => ({ url: r.url, titulo: r.title }));
+  const final = comFontes(texto, citadas.length ? citadas : achadas.slice(0, 5));
+  if (msg.stop_reason === 'max_tokens') return `${final}\n\n[resposta cortada: limite de tamanho atingido]`;
+  return final;
 }
 
 // ---------- OpenAI e APIs compatíveis (OpenRouter, DeepSeek, Groq, Ollama…) ----------
@@ -72,7 +96,7 @@ const compativel = (cfg) => {
 
 // ---------- Gemini (Google) ----------
 
-async function gemini({ modelo, instrucoes, pedido }) {
+async function gemini({ modelo, instrucoes, pedido, internet = false }) {
   if (!modelo) throw new Error('informe "modelo" no motores.json');
   const dados = await postarJSON(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`,
@@ -80,12 +104,14 @@ async function gemini({ modelo, instrucoes, pedido }) {
     {
       systemInstruction: { parts: [{ text: instrucoes }] },
       contents: [{ role: 'user', parts: [{ text: pedido }] }],
+      ...(internet ? { tools: [{ google_search: {} }] } : {}), // busca no Google (grátis dentro do limite do plano)
     },
   );
   const partes = dados.candidates?.[0]?.content?.parts || [];
   const texto = partes.map((p) => p.text || '').join('').trim();
   if (!texto) throw new Error(`o Gemini não respondeu (${dados.candidates?.[0]?.finishReason || 'sem motivo'})`);
-  return texto;
+  const fontes = (dados.candidates?.[0]?.groundingMetadata?.groundingChunks || []).map((c) => ({ url: c.web?.uri, titulo: c.web?.title }));
+  return comFontes(texto, fontes);
 }
 
 // ---------- Webhook (n8n, Make, API própria) ----------
@@ -99,6 +125,54 @@ async function webhook({ webhook: url, pedido, ordem, agente }) {
 }
 
 export const PROVEDORES = { anthropic, openai, gemini, compativel, webhook };
+
+// ---------- limite de uso (HTTP 429) e IA reserva ----------
+
+const ehLimite = (erro) => erro?.status === 429 || /HTTP 429|rate.?limit|quota|RESOURCE_EXHAUSTED|too many requests/i.test(erro?.message || '');
+// cota do dia acabou: não adianta esperar alguns segundos
+const ehLimiteDiario = (erro) => /per.?day|PerDay|daily/i.test(erro?.message || '');
+const ESPERA_MAXIMA = 45; // segundos
+
+// Quanto a API pediu para esperar ("retryDelay": "23s", "retry in 23.5s", "try again in 1m2s")
+function esperaPedida(erro) {
+  const m = String(erro?.message || '');
+  const s = m.match(/retryDelay"?\s*:\s*"?(\d+(?:\.\d+)?)s/i) || m.match(/(?:retry|try again) in (\d+(?:\.\d+)?)\s*s/i);
+  if (s) return Number(s[1]);
+  const ms = m.match(/try again in (\d+)m(\d+(?:\.\d+)?)s/i);
+  return ms ? Number(ms[1]) * 60 + Number(ms[2]) : 20;
+}
+
+/**
+ * Chama a IA do agente. Se der limite de uso (429): espera e tenta de novo uma vez
+ * (quando é limite por minuto) e, se continuar, usa a IA do agente reserva (c.reserva).
+ * Devolve { texto, usado } — usado é a configuração que respondeu (a do agente ou a reserva).
+ */
+export async function chamarIA(c, args, { cfg = {}, aoEsperar = () => {} } = {}) {
+  const chamar = (conf) => PROVEDORES[conf.provedor]({ ...conf, ...args });
+  try {
+    return { texto: await chamar(c), usado: c };
+  } catch (erro) {
+    if (!ehLimite(erro)) throw erro;
+    let ultimo = erro;
+    const espera = esperaPedida(erro);
+    if (!ehLimiteDiario(erro) && espera <= ESPERA_MAXIMA) {
+      aoEsperar(`Limite da IA: tentando de novo em ${Math.ceil(espera)} s`);
+      await new Promise((r) => setTimeout(r, (espera + 1) * 1000));
+      try { return { texto: await chamar(c), usado: c }; } catch (erro2) {
+        if (!ehLimite(erro2)) throw erro2;
+        ultimo = erro2;
+      }
+    }
+    const r = c.reserva && cfg[c.reserva];
+    if (!r || r.provedor === 'webhook') {
+      throw new Error(`limite de uso da IA atingido${c.reserva ? '' : ' (dica: escolha uma IA reserva em ⚙ Equipe)'}: ${ultimo.message.slice(0, 300)}`);
+    }
+    aoEsperar(`Limite da IA: usando a reserva (${c.reserva})`);
+    // a reserva só empresta a IA (provedor, modelo, chave); o papel e as instruções continuam do agente
+    const conf = { provedor: r.provedor, modelo: r.modelo, baseUrl: r.baseUrl, chaveEnv: r.chaveEnv, esforco: r.esforco, internet: c.internet && ['anthropic', 'gemini'].includes(r.provedor) };
+    return { texto: await chamar(conf), usado: { ...conf, reservaDe: c.reserva } };
+  }
+}
 
 // ---------- lista de modelos disponíveis (para a tela Equipe) ----------
 

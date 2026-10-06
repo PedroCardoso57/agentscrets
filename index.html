@@ -20,6 +20,8 @@
   <header id="topo">
     <h1>agentscrets <span>escritório de agentes de IA</span></h1>
     <div class="botoes-topo">
+      <button type="button" id="abrir-clientes" title="Fichas dos clientes: tom de voz, público, o que evitar">📇 Clientes</button>
+      <button type="button" id="abrir-rotinas" title="Ordens que saem sozinhas num horário">🗓 Rotinas</button>
       <button type="button" id="abrir-entregas" title="Tudo o que os agentes já produziram">📦 Entregas</button>
       <button type="button" id="abrir-documentacao" title="Documentação do projeto, mantida pelo Redator">📄 Documentação</button>
       <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
@@ -41,6 +43,7 @@
       <span class="coroa">★</span>
       <select id="destinatario" aria-label="Para quem é a ordem"></select>
     </label>
+    <select id="cliente-ordem" aria-label="Para qual cliente" title="A ficha do cliente vai junto com a ordem" hidden><option value="">Sem cliente</option></select>
     <input id="texto-ordem" type="text" maxlength="2000" placeholder="Dê uma ordem… (ex.: escreva 3 legendas para o post de segunda)" aria-label="Ordem" />
     <button type="submit">Enviar</button>
     <p id="aviso-ordem" role="status"></p>
@@ -75,11 +78,22 @@
     <article class="corpo doc"></article>
   </dialog>
 
+  <dialog id="dlg-clientes" aria-labelledby="titulo-clientes">
+    <header><h2 id="titulo-clientes">Clientes · o que a equipe precisa saber de cada marca</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-rotinas" aria-labelledby="titulo-rotinas">
+    <header><h2 id="titulo-rotinas">Rotinas · ordens que saem sozinhas</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
   <dialog id="dlg-entregas" aria-labelledby="titulo-entregas">
     <header>
       <h2 id="titulo-entregas">Entregas da equipe</h2>
       <input name="busca" type="search" placeholder="Buscar no pedido ou na entrega…" aria-label="Buscar" />
       <select name="agente" aria-label="Agente"><option value="">Todos os agentes</option></select>
+      <select name="cliente" aria-label="Cliente" hidden><option value="">Todos os clientes</option></select>
       <button type="button" class="fechar" aria-label="Fechar">✕</button>
     </header>
     <div class="grade-entregas">

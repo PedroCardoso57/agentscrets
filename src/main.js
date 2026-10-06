@@ -10,6 +10,7 @@ import { criarIntegracao } from './integracao.js';
 import { criarConfiguracao } from './configuracao.js';
 import { criarJanelaDocumentacao } from './documentacao.js';
 import { criarJanelaEntregas } from './entregas.js';
+import { criarGestao } from './gestao.js';
 
 // ---------- renderização ----------
 
@@ -114,6 +115,19 @@ function montar() {
 
 const lista = document.getElementById('lista-agentes');
 const destinatario = document.getElementById('destinatario');
+const clienteOrdem = document.getElementById('cliente-ordem');
+let listaClientes = [];
+const nomeCliente = (id) => listaClientes.find((c) => c.id === id)?.nome || id;
+
+// seletor de cliente na barra de ordens (só aparece quando há clientes cadastrados)
+function atualizarClientes(lista) {
+  listaClientes = lista;
+  const atual = clienteOrdem.value;
+  clienteOrdem.replaceChildren(new Option('Sem cliente', ''), ...lista.map((c) => new Option(`👤 ${c.nome}`, c.id)));
+  clienteOrdem.value = lista.some((c) => c.id === atual) ? atual : '';
+  clienteOrdem.hidden = !lista.length;
+  renderizarOrdens();
+}
 function montarPainel() {
   lista.innerHTML = '';
   const selecionado = destinatario.value;
@@ -227,6 +241,8 @@ let integracao = null;
 let decisorAtivo = false;
 let configuracao = null;
 let janelaDoc = null;
+let gestao = null;
+let clientesCarregados = false;
 
 function avisar(texto, erro = false) {
   aviso.textContent = texto;
@@ -256,7 +272,7 @@ form.addEventListener('submit', async (ev) => {
   const botao = form.querySelector('button');
   botao.disabled = true;
   try {
-    await integracao.enviarOrdem(para, texto);
+    await integracao.enviarOrdem(para, texto, clienteOrdem.value);
     textoOrdem.value = '';
     chefe.digitando = false;
   } catch (erro) {
@@ -286,6 +302,14 @@ function renderizarOrdens() {
     chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
     chip.classList.add(o.estado);
     li.querySelector('.texto').textContent = o.texto;
+    // de onde veio a ordem: cliente, ajuste de uma entrega, rotina agendada, Telegram
+    const marcas = [
+      o.cliente ? `👤 ${nomeCliente(o.cliente)}` : null,
+      o.ajuste ? '↩ ajuste' : null,
+      o.origem?.rotina ? '🗓 rotina' : null,
+      o.origem?.telegram ? '✈ Telegram' : null,
+    ].filter(Boolean);
+    if (marcas.length) li.querySelector('.cab').after(Object.assign(document.createElement('div'), { className: 'marcas', textContent: marcas.join(' · ') }));
     if (o.decisao) {
       // quem decidiu o agente (o Laya), com que certeza e a urgência
       const d = document.createElement('div');
@@ -301,6 +325,15 @@ function renderizarOrdens() {
       resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
       resp.querySelector('b').textContent = nomeDe(r.agente);
       resp.querySelector('.corpo-resp').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      if (r.revisao?.observacoes) {
+        const obs = document.createElement('details');
+        obs.className = 'obs-revisor';
+        obs.innerHTML = '<summary>✅ revisado pelo Revisor</summary><div></div>';
+        obs.querySelector('div').textContent = r.revisao.observacoes;
+        resp.appendChild(obs);
+      } else if (r.revisao?.erro) {
+        resp.appendChild(Object.assign(document.createElement('div'), { className: 'obs-revisor', textContent: `⚠️ sem revisão: ${r.revisao.erro}` }));
+      }
       if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
       li.appendChild(resp);
     });
@@ -354,6 +387,24 @@ function barraAvaliacao(ordem, r, indice) {
       }
     };
     meta.appendChild(b);
+  }
+  if (!r.erro && !/^(Erro:|Interrompida:)/.test(r.texto)) {
+    const ajustar = document.createElement('button');
+    ajustar.type = 'button';
+    ajustar.className = 'ajustar';
+    ajustar.textContent = '↩ ajustar';
+    ajustar.title = `Pedir para ${nomeDe(r.agente)} refazer esta entrega`;
+    ajustar.onclick = async () => {
+      const pedido = prompt(`O que ${nomeDe(r.agente)} deve mudar nesta entrega?`, '');
+      if (!pedido?.trim()) return;
+      try {
+        await integracao.pedirAjuste(ordem.id, indice, pedido);
+        avisar(`↩ ${nomeDe(r.agente)} vai ajustar a entrega.`);
+      } catch (erro) {
+        avisar(`Não consegui pedir o ajuste: ${erro.message}`, true);
+      }
+    };
+    meta.appendChild(ajustar);
   }
   meta.appendChild(info);
   if (r.comentario) {
@@ -432,6 +483,7 @@ enquadrarTudo();
 const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
+  aoClientes: (lista) => gestao?.definirClientes(lista),
   aoDecisor({ ativo, online }) {
     cranio.grupo.visible = ativo;
     cranio.definirOnline(online);
@@ -483,11 +535,14 @@ integracao = criarIntegracao({
   aoConexao(texto, online) {
     conexao.textContent = `● ${texto}`;
     conexao.classList.toggle('online', online);
+    // ao conectar no servidor, busca os clientes (para o seletor da barra de ordens)
+    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); }
   },
 });
 
 janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
-criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
+criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, pedirAjuste: (...a) => integracao.pedirAjuste(...a) });
+gestao = criarGestao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, agentesVisiveis: () => [...estacoes.keys()], aoMudarClientes: atualizarClientes });
 
 configuracao = criarConfiguracao({
   agentesVisiveis: () => [...estacoes.keys()],

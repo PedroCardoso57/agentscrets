@@ -14,16 +14,19 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PROVEDORES, NOMES, listarModelos } from './provedores.js';
+import { PROVEDORES, chamarIA, NOMES, listarModelos } from './provedores.js';
 
 const VOLTAR_AO_OCIOSO = 8000;
 
 const PROVEDORES_VALIDOS = Object.keys(PROVEDORES);
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const COM_INTERNET = ['anthropic', 'gemini'];
+const REVISOR = process.env.REVISOR || 'revisor'; // quem revisa as entregas dos agentes com "revisar"
 // chaves que a tela de configuração mostra como "configurada / falta"
 const CHAVES_CONHECIDAS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY', 'MISTRAL_API_KEY'];
 
-export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem }) {
+// fichaCliente(id) → texto da ficha do cliente (tom, público, o que evitar…) ou ''
+export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem, fichaCliente = () => '' }) {
   const arquivo = process.env.MOTORES_ARQUIVO || join(raiz, 'motores.json');
   // o que você muda pela tela fica na pasta de dados (o motores.json original vira só o ponto de partida)
   const arquivoEditado = join(dadosDir, 'motores.json');
@@ -60,11 +63,14 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
       const host = new URL(c.baseUrl).host;
       nome = /groq/.test(host) ? 'Groq' : /openrouter/.test(host) ? 'OpenRouter' : /nvidia/.test(host) ? 'NVIDIA' : /mistral/.test(host) ? 'Mistral' : /cloudflare/.test(host) ? 'Cloudflare' : /:11434$/.test(host) ? 'Ollama' : /deepseek/.test(host) ? 'DeepSeek' : host;
     }
-    return c.modelo ? `${nome} · ${c.modelo}` : nome;
+    return (c.modelo ? `${nome} · ${c.modelo}` : nome) + (c.reservaDe ? ' (reserva)' : '');
   }
 
-  function instrucoesDe(id, c, cfg, podeDelegar) {
+  function instrucoesDe(id, c, cfg, podeDelegar, ordem) {
     let texto = c.instrucoes || `Você é o agente "${id}" de um escritório de IA${c.funcao ? `, responsável por: ${c.funcao}` : ''}. Cumpra a tarefa do chefe com qualidade e responda em português.`;
+    const ficha = ordem?.cliente ? fichaCliente(ordem.cliente) : '';
+    if (ficha) texto += `\n\nEsta tarefa é para o cliente abaixo. Siga a ficha dele (tom de voz, público, o que evitar) em tudo o que entregar:\n\n${ficha}`;
+    if (c.internet) texto += '\n\nVocê pode pesquisar na internet: use a busca para trazer dados atuais e cite as fontes. Não invente números nem fontes.';
     if (podeDelegar) {
       const equipe = Object.entries(cfg).filter(([outro, o]) => outro !== id && !o.delegar)
         .map(([outro, o]) => `- ${outro}: ${o.funcao || 'sem descrição'}`).join('\n');
@@ -74,8 +80,37 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   }
 
   function pedidoDe(ordem) {
+    if (ordem.ajuste) {
+      // pedido de ajuste: o agente vê o pedido original e o que ele mesmo entregou
+      return `O chefe pediu um ajuste numa entrega sua.\n\nPedido original:\n${ordem.ajuste.original}\n\nSua entrega anterior:\n<<<\n${ordem.ajuste.anterior}\n>>>\n\nAjuste pedido pelo chefe: ${ordem.texto}\n\nDevolva a versão completa já ajustada (não só a parte que mudou).`;
+    }
     return ordem.contexto ? `${ordem.texto}\n\nContexto: ${ordem.contexto}` : ordem.texto;
   }
+
+  // O Revisor recebe a entrega e devolve a versão final + observações (na fila dele, uma por vez).
+  const SEPARADOR_OBS = /^[ \t]*-{3,}[ \t]*OBSERVA[ÇC][ÕO]ES[ \t]*-{3,}[ \t]*$/im;
+  function revisar(ordem, autor, rascunho) {
+    return naFila(REVISOR, async () => {
+      const cfg = configuracao();
+      const c = cfg[REVISOR];
+      registrarStatus({ id: REVISOR, status: 'trabalhando', tarefa: `Revisando a entrega de ${autor}`, motor: rotulo(c) });
+      try {
+        const pedido = `Revise a entrega abaixo, feita por "${autor}", antes de ela ir para o chefe.\n\nPedido:\n${ordem.ajuste ? `${ordem.ajuste.original}\n(ajuste pedido: ${ordem.texto})` : ordem.texto}\n\nEntrega:\n<<<\n${rascunho}\n>>>\n\nResponda neste formato, sem nada antes:\n1) a versão final revisada, completa e pronta para usar (mantenha o que já está bom; corrija erros, clareza e riscos);\n2) uma linha só com ---OBSERVAÇÕES---;\n3) em tópicos curtos, o que você mudou e por quê (ou "Nada a corrigir").`;
+        const { texto: resposta, usado } = await chamarIA(c, { instrucoes: instrucoesDe(REVISOR, c, cfg, false, ordem), pedido, ordem, agente: REVISOR }, {
+          cfg, aoEsperar: (tarefa) => registrarStatus({ id: REVISOR, status: 'aguardando', tarefa }),
+        });
+        const [final, obs] = String(resposta || '').split(SEPARADOR_OBS);
+        registrarStatus({ id: REVISOR, status: 'concluido', tarefa: `Revisou a entrega de ${autor}` });
+        setTimeout(() => registrarStatus({ id: REVISOR, status: 'ocioso', tarefa: '' }), VOLTAR_AO_OCIOSO);
+        return { texto: final.trim() || rascunho, observacoes: (obs || '').trim(), motor: rotulo(usado) };
+      } catch (erro) {
+        registrarStatus({ id: REVISOR, status: 'erro', tarefa: erro.message.slice(0, 140) });
+        throw erro;
+      }
+    });
+  }
+
+  const revisorDisponivel = (id, c, cfg) => c.revisar && id !== REVISOR && cfg[REVISOR] && cfg[REVISOR].provedor !== 'webhook';
 
   function lerPlano(texto) {
     const limpo = texto.replace(/```(?:json)?/g, '');
@@ -122,6 +157,13 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
       c.esforco = dados.esforco;
     }
     if (dados.delegar) c.delegar = true;
+    if (dados.revisar) c.revisar = true; // passa pelo Revisor antes de entregar
+    // IA reserva: se esta der limite de uso, o agente usa a IA de outro agente
+    if (typeof dados.reserva === 'string' && /^[\w-]{1,40}$/.test(dados.reserva)) c.reserva = dados.reserva;
+    if (dados.internet) {
+      if (!COM_INTERNET.includes(provedor)) throw new Error('pesquisa na internet só funciona com Claude ou Gemini');
+      c.internet = true;
+    }
     const funcao = texto(dados.funcao, 200);
     const instrucoes = texto(dados.instrucoes, 8000);
     if (funcao) c.funcao = funcao;
@@ -132,6 +174,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   async function salvarAgente(id, dados) {
     if (!/^[\w-]{1,40}$/.test(id)) throw new Error('id do agente inválido');
     const c = validar(dados);
+    if (c.reserva === id) delete c.reserva; // reserva de si mesmo não ajuda
     const bruto = lerBruto();
     bruto[id] = c;
     await mkdir(dadosDir, { recursive: true });
@@ -196,12 +239,17 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     const cfg = configuracao();
     const c = cfg[id];
     if (!c) return;
-    const podeDelegar = Boolean(c.delegar) && (!ordem.de || ordem.de === 'chefe'); // tarefas delegadas não são re-delegadas
+    const podeDelegar = Boolean(c.delegar) && (!ordem.de || ordem.de === 'chefe') && !ordem.ajuste; // delegadas e ajustes não são re-delegados
     registrarStatus({ id, status: 'trabalhando', tarefa: ordem.texto.slice(0, 140), motor: rotulo(c) });
     const inicio = Date.now();
-    const meta = () => ({ motor: rotulo(c), ms: Date.now() - inicio }); // para o relatório comparar IAs
+    let usado = c; // muda se a IA reserva precisar entrar
+    const meta = () => ({ motor: rotulo(usado), ms: Date.now() - inicio }); // para o relatório comparar IAs
     try {
-      let resposta = await PROVEDORES[c.provedor]({ ...c, instrucoes: instrucoesDe(id, c, cfg, podeDelegar), pedido: pedidoDe(ordem), ordem, agente: id });
+      const chamada = await chamarIA(c, { instrucoes: instrucoesDe(id, c, cfg, podeDelegar, ordem), pedido: pedidoDe(ordem), ordem, agente: id }, {
+        cfg, aoEsperar: (tarefa) => registrarStatus({ id, status: 'aguardando', tarefa }),
+      });
+      usado = chamada.usado;
+      let resposta = chamada.texto;
       if (resposta === null) { // webhook: entregue, o motor responde depois
         registrarStatus({ id, status: 'aguardando', tarefa: 'Enviado ao motor externo' });
         return;
@@ -211,9 +259,19 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
         if (plano) {
           const tarefas = (Array.isArray(plano.tarefas) ? plano.tarefas : [])
             .filter((t) => t && cfg[t.para] && t.para !== id && typeof t.texto === 'string' && t.texto.trim());
-          for (const t of tarefas) criarOrdem({ para: t.para, texto: t.texto, de: id, contexto: `pedido original do chefe: "${ordem.texto}"` });
+          for (const t of tarefas) criarOrdem({ para: t.para, texto: t.texto, de: id, contexto: `pedido original do chefe: "${ordem.texto}"`, cliente: ordem.cliente, origem: ordem.origem });
           resposta = (plano.resposta || 'Plano montado.') + (tarefas.length ? `\n\nDistribuí: ${tarefas.map((t) => `${t.para} → ${t.texto}`).join(' · ')}` : '');
         }
+      } else if (resposta && revisorDisponivel(id, c, cfg)) {
+        // revisão automática: o agente fica livre e a entrega só sai depois que o Revisor aprovar
+        const m = meta();
+        registrarStatus({ id, status: 'concluido', tarefa: 'Entrega com o Revisor' });
+        setTimeout(() => registrarStatus({ id, status: 'ocioso', tarefa: '' }), VOLTAR_AO_OCIOSO);
+        revisar(ordem, id, resposta)
+          .then((r) => registrarResposta(ordem, id, r.texto, { ...m, revisao: { por: REVISOR, motor: r.motor, observacoes: r.observacoes.slice(0, 4000) } }))
+          .catch((erro) => registrarResposta(ordem, id, resposta, { ...m, revisao: { por: REVISOR, erro: erro.message.slice(0, 200) } }))
+          .finally(() => atualizarOrdem(ordem));
+        return;
       }
       registrarResposta(ordem, id, resposta || '(resposta vazia)', meta());
       atualizarOrdem(ordem);

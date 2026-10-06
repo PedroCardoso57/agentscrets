@@ -3,17 +3,18 @@
 
 import { markdownParaHtml } from './documentacao.js';
 
-export function criarJanelaEntregas({ servidorAtivo, nomeDe }) {
+export function criarJanelaEntregas({ servidorAtivo, nomeDe, pedirAjuste }) {
   const dlg = document.getElementById('dlg-entregas');
   const busca = dlg.querySelector('input[name=busca]');
   const filtroAgente = dlg.querySelector('select[name=agente]');
+  const filtroCliente = dlg.querySelector('select[name=cliente]');
   const lista = dlg.querySelector('.lista-entregas');
   const leitura = dlg.querySelector('.leitura-entrega');
   const rodape = dlg.querySelector('.rodape-entregas');
   let pagina = 1;
   let timerBusca = null;
 
-  const params = () => new URLSearchParams({ q: busca.value, agente: filtroAgente.value });
+  const params = () => new URLSearchParams({ q: busca.value, agente: filtroAgente.value, cliente: filtroCliente.value });
 
   async function carregar() {
     lista.replaceChildren(Object.assign(document.createElement('li'), { className: 'vazio', textContent: 'Carregando…' }));
@@ -28,10 +29,15 @@ export function criarJanelaEntregas({ servidorAtivo, nomeDe }) {
     const atual = filtroAgente.value;
     filtroAgente.replaceChildren(new Option('Todos os agentes', ''), ...dados.agentes.map((a) => new Option(nomeDe(a), a)));
     filtroAgente.value = dados.agentes.includes(atual) ? atual : '';
+    const clienteAtual = filtroCliente.value;
+    filtroCliente.replaceChildren(new Option('Todos os clientes', ''), ...dados.clientes.map((c) => new Option(c.nome, c.id)));
+    filtroCliente.value = dados.clientes.some((c) => c.id === clienteAtual) ? clienteAtual : '';
+    filtroCliente.hidden = !dados.clientes.length;
+    const nomesClientes = Object.fromEntries(dados.clientes.map((c) => [c.id, c.nome]));
 
     lista.replaceChildren();
     if (!dados.itens.length) {
-      lista.append(Object.assign(document.createElement('li'), { className: 'vazio', textContent: busca.value || filtroAgente.value ? 'Nada encontrado com esse filtro.' : 'Nenhuma entrega ainda. Dê uma ordem para a equipe!' }));
+      lista.append(Object.assign(document.createElement('li'), { className: 'vazio', textContent: busca.value || filtroAgente.value || filtroCliente.value ? 'Nada encontrado com esse filtro.' : 'Nenhuma entrega ainda. Dê uma ordem para a equipe!' }));
     }
     for (const e of dados.itens) {
       const li = document.createElement('li');
@@ -40,7 +46,7 @@ export function criarJanelaEntregas({ servidorAtivo, nomeDe }) {
       li.querySelector('.quando').textContent = new Date(e.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       li.querySelector('.pedido').textContent = e.pedido;
       li.querySelector('.resumo').textContent = e.resumo;
-      li.querySelector('.info').textContent = [e.motor, e.nota === 1 ? '👍' : e.nota === -1 ? '👎' : null, e.de !== 'chefe' ? `delegada por ${nomeDe(e.de)}` : null].filter(Boolean).join(' · ');
+      li.querySelector('.info').textContent = [e.cliente ? `👤 ${nomesClientes[e.cliente] || e.cliente}` : null, e.ajuste ? '↩ ajuste' : null, e.revisado ? '✅ revisado' : null, e.motor, e.nota === 1 ? '👍' : e.nota === -1 ? '👎' : null, e.de !== 'chefe' ? `delegada por ${nomeDe(e.de)}` : null].filter(Boolean).join(' · ');
       li.onclick = () => abrirEntrega(e, li);
       lista.append(li);
     }
@@ -61,7 +67,17 @@ export function criarJanelaEntregas({ servidorAtivo, nomeDe }) {
     baixar.onclick = () => salvar(texto, e.arquivo.split('/').pop());
     const copiar = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Copiar texto' });
     copiar.onclick = async () => { await navigator.clipboard.writeText(texto); copiar.textContent = 'Copiado!'; setTimeout(() => { copiar.textContent = 'Copiar texto'; }, 1500); };
-    barra.append(caminho, copiar, baixar);
+    const ajustar = Object.assign(document.createElement('button'), { type: 'button', textContent: '↩ Pedir ajuste', title: `${nomeDe(e.agente)} refaz esta entrega com o que você pedir` });
+    ajustar.onclick = async () => {
+      const pedido = prompt(`O que ${nomeDe(e.agente)} deve mudar nesta entrega?`, '');
+      if (!pedido?.trim()) return;
+      try {
+        await pedirAjuste(e.ordemId, e.indice, pedido);
+        ajustar.textContent = '✓ Ajuste pedido';
+        ajustar.disabled = true;
+      } catch (erro) { alert(`Não consegui pedir o ajuste: ${erro.message}`); }
+    };
+    barra.append(caminho, copiar, ajustar, baixar);
     const corpo = document.createElement('article');
     corpo.className = 'doc';
     corpo.innerHTML = markdownParaHtml(texto); // seguro: markdownParaHtml escapa o texto
@@ -78,6 +94,7 @@ export function criarJanelaEntregas({ servidorAtivo, nomeDe }) {
 
   busca.addEventListener('input', () => { clearTimeout(timerBusca); timerBusca = setTimeout(() => { pagina = 1; carregar(); }, 300); });
   filtroAgente.addEventListener('change', () => { pagina = 1; carregar(); });
+  filtroCliente.addEventListener('change', () => { pagina = 1; carregar(); });
   rodape.querySelector('.anterior').addEventListener('click', () => { pagina--; carregar(); });
   rodape.querySelector('.proxima').addEventListener('click', () => { pagina++; carregar(); });
   rodape.querySelector('.baixar-todas').addEventListener('click', () => { window.location.href = `api/entregas/exportar?${params()}`; });

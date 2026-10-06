@@ -16,7 +16,7 @@ function slug(texto) {
 const ehEntrega = (r) => r && !r.erro && !r.simulada && !/^(Erro:|Interrompida:)/.test(r.texto);
 
 // aoNova(item, conteudo): chamada só para entregas novas (não no arquivamento das antigas nem ao regravar)
-export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', aoNova = () => {} }) {
+export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', nomeCliente = (id) => id, aoNova = () => {} }) {
   const pasta = join(dadosDir, 'entregas');
   const arquivoIndice = join(pasta, 'indice.json');
   let indice = []; // { chave, ordemId, indice, agente, de, para, motor, ms, em, pedido, trecho, nota, arquivo }
@@ -50,6 +50,7 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
     const linhas = [
       `# ${ordem.texto.split('\n')[0].slice(0, 120)}`,
       '',
+      ordem.cliente ? `- **Cliente:** ${nomeCliente(ordem.cliente)}` : null,
       `- **Agente:** ${r.agente}`,
       `- **IA:** ${nomeIA(r)}`,
       `- **Data:** ${new Date(r.em).toLocaleString('pt-BR', { timeZone: FUSO })}`,
@@ -57,17 +58,20 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
       typeof r.ms === 'number' ? `- **Tempo:** ${(r.ms / 1000).toFixed(1)} s` : null,
       d ? `- **Crânio:** ${d.modo || 'escolheu'} ${d.agente} (${Math.round((d.confianca || 0) * 100)}%)${d.urgencia ? `, urgência ${d.urgencia}` : ''}` : null,
       r.nota ? `- **Avaliação:** ${r.nota === 1 ? '👍 boa' : '👎 ruim'}${r.comentario ? ` — ${r.comentario}` : ''}` : null,
+      r.revisao ? `- **Revisão:** ${r.revisao.erro ? `o ${r.revisao.por} não conseguiu revisar (${r.revisao.erro})` : `revisado por ${r.revisao.por} (${r.revisao.motor})`}` : null,
+      ordem.ajuste ? `- **Ajuste de:** ordem ${ordem.ajuste.ordemId}` : null,
       `- **Ordem:** ${ordem.id}`,
       '',
       '## Pedido',
       '',
-      ordem.texto,
+      ordem.ajuste ? `${ordem.ajuste.original}\n\n**Ajuste pedido:** ${ordem.texto}` : ordem.texto,
       ordem.contexto ? `\n> ${ordem.contexto}` : null,
       '',
       '## Entrega',
       '',
       r.texto,
       '',
+      r.revisao?.observacoes ? `## Observações do Revisor\n\n${r.revisao.observacoes}\n` : null,
     ];
     return linhas.filter((l) => l !== null).join('\n');
   }
@@ -88,7 +92,9 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
     }
     Object.assign(item, {
       agente: r.agente, de: ordem.de || 'chefe', motor: nomeIA(r), ms: r.ms, em: r.em,
-      pedido: ordem.texto.slice(0, 300), trecho: r.texto.slice(0, 1500), nota: r.nota || 0,
+      cliente: ordem.cliente || '', ajuste: Boolean(ordem.ajuste), revisado: Boolean(r.revisao && !r.revisao.erro),
+      pedido: (ordem.ajuste ? `${ordem.ajuste.original.split('\n')[0].slice(0, 200)} (ajuste: ${ordem.texto})` : ordem.texto).slice(0, 300),
+      trecho: r.texto.slice(0, 1500), nota: r.nota || 0,
     });
     const caminho = join(pasta, item.arquivo);
     await mkdir(join(caminho, '..'), { recursive: true });
@@ -98,21 +104,22 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
     if (nova && salvarJa) aoNova({ ...item, texto: r.texto }, conteudo);
   }
 
-  function filtrar({ q = '', agente = '' } = {}) {
+  function filtrar({ q = '', agente = '', cliente = '' } = {}) {
     const termo = q.trim().toLowerCase();
     return indice
-      .filter((e) => (!agente || e.agente === agente) && (!termo || `${e.pedido}\n${e.trecho}\n${e.agente}\n${e.motor}`.toLowerCase().includes(termo)))
+      .filter((e) => (!agente || e.agente === agente) && (!cliente || e.cliente === cliente) && (!termo || `${e.pedido}\n${e.trecho}\n${e.agente}\n${e.motor}`.toLowerCase().includes(termo)))
       .sort((a, b) => (a.em < b.em ? 1 : -1)); // mais nova primeiro
   }
 
-  function listar({ q, agente, pagina = 1 }) {
-    const todos = filtrar({ q, agente });
+  function listar({ q, agente, cliente, pagina = 1 }) {
+    const todos = filtrar({ q, agente, cliente });
     const p = Math.max(1, Number(pagina) || 1);
     return {
       total: todos.length,
       pagina: p,
       paginas: Math.max(1, Math.ceil(todos.length / POR_PAGINA)),
       agentes: [...new Set(indice.map((e) => e.agente))].sort(),
+      clientes: [...new Set(indice.map((e) => e.cliente).filter(Boolean))].map((id) => ({ id, nome: nomeCliente(id) })),
       itens: todos.slice((p - 1) * POR_PAGINA, p * POR_PAGINA).map(({ trecho, ...e }) => ({ ...e, resumo: trecho.slice(0, 160) })),
     };
   }

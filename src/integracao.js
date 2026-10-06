@@ -26,7 +26,7 @@ const TAREFAS_DEMO = {
   revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -71,11 +71,11 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     return ordem.para === 'todos' ? ids() : [ordem.para];
   }
 
-  async function enviarOrdem(para, texto) {
+  async function enviarOrdem(para, texto, cliente = '') {
     texto = texto.trim();
     if (!texto) return;
     if (servidorAtivo) {
-      const r = await fetch('api/ordens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ para, texto }) });
+      const r = await fetch('api/ordens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ para, texto, cliente }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
       receberOrdem(await r.json());
       return;
@@ -185,6 +185,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('clientes', (e) => { try { aoClientes(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('removido', (e) => { try { aoRemovido(JSON.parse(e.data).id); } catch { /* ignora */ } });
     fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.onerror = () => aoConexao('reconectando…', false);
@@ -199,5 +200,12 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     else aoConexao('aguardando status', false);
   })();
 
-  return { enviarOrdem, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
+  // Pede ao mesmo agente que refaça uma entrega (vê o pedido original e o que entregou).
+  async function pedirAjuste(ordemId, indice, texto) {
+    const r = await fetch(`api/ordens/${encodeURIComponent(ordemId)}/ajuste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ indice, texto }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
+    receberOrdem(await r.json());
+  }
+
+  return { enviarOrdem, pedirAjuste, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
 }

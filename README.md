@@ -193,6 +193,30 @@ O botão **📄 Documentação** abre o documento do projeto, que o **Redator** 
 - Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
+## Clientes, ajustes, Revisor, internet e rotinas
+
+### 📇 Clientes
+Cadastre uma ficha por cliente: nicho, público, tom de voz, produtos, o que evitar e exemplos que deram certo. Escolha o cliente na barra de ordens (aparece ao lado de "Para") e a ficha vai junto para o agente, inclusive nas tarefas que o Orquestrador distribui. No Telegram, comece a ordem com `#id-do-cliente` (ex.: `#padaria-do-ze /redator legenda de natal`); `/clientes` lista os ids. As entregas guardam o cliente e o 📦 Entregas filtra por ele. Fica em `dados/clientes.json`.
+
+### ↩ Ajustes
+Para refazer uma entrega, clique em **↩ ajustar** embaixo dela (no painel ou no 📦 Entregas) e diga o que mudar ("mais curta", "tom mais sério"). O mesmo agente recebe o pedido original, o que ele entregou e o seu ajuste, e devolve a versão completa. No Telegram, é só **responder à mensagem da entrega**.
+
+### ✅ Revisor automático
+Em ⚙ Equipe, marque **"Entregas passam pelo Revisor"** nos agentes que você quer revisados. O agente termina, o Revisor corrige, e você recebe a versão final com as observações dele (no painel, no `.md` e no Telegram). Se o Revisor falhar, a entrega chega sem revisão e com o aviso. Para usar outro agente como revisor: `REVISOR=<id>` no `.env`. Cada revisão é mais uma chamada de IA: atenção às cotas gratuitas.
+
+### 🌐 Pesquisa na internet
+Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente busca na web e a resposta termina com **Fontes:**. No Gemini usa a busca do Google (grátis dentro do limite do plano); no Claude, a ferramenta de busca da Anthropic (cobrada à parte por busca).
+
+### 🗓 Rotinas
+Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
+
+### IA reserva (erro 429, limite de uso)
+As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
+1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;
+2. se continuar, ou se a cota do dia acabou, ele usa a **IA reserva**: em ⚙ Equipe → "IA reserva", escolha outro agente para emprestar a IA dele (de preferência de outro provedor: Gemini ↔ Groq ↔ OpenRouter ↔ NVIDIA ↔ Mistral). O papel e as instruções continuam do agente; o relatório mostra "(reserva)".
+
+Para gastar menos cota: espalhe os agentes por provedores diferentes, use o Revisor só onde vale a pena e aumente `DOC_INTERVALO_MIN` (a documentação viva também chama a IA do Redator).
+
 ## Entregas: tudo o que a equipe já produziu
 
 O botão **📦 Entregas** abre o arquivo de tudo o que os agentes responderam, da mais nova para a mais antiga: busca por texto (no pedido ou na entrega), filtro por agente, leitura formatada, **Copiar texto**, **Baixar .md** de cada uma e **Baixar todas** (junta num só arquivo o que estiver filtrado).

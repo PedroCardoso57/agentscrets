@@ -37,6 +37,8 @@ import { criarDecisor } from './motores/decisor.js';
 import { criarDocumentacao } from './motores/documentacao.js';
 import { criarEntregas } from './motores/entregas.js';
 import { criarTelegram } from './motores/telegram.js';
+import { criarClientes } from './motores/clientes.js';
+import { criarRotinas } from './motores/rotinas.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -59,7 +61,7 @@ const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 const estado = new Map(); // id → último status recebido
 const ordens = [];        // histórico, da mais antiga para a mais nova
-const clientes = new Set();
+const conexoes = new Set(); // páginas abertas recebendo eventos ao vivo
 
 // ---------- acesso ----------
 
@@ -134,7 +136,7 @@ function transmitir(evento, dados) {
 
 function transmitirSemSalvar(evento, dados) {
   const linha = (evento ? `event: ${evento}\n` : '') + `data: ${JSON.stringify(dados)}\n\n`;
-  for (const c of clientes) c.write(linha);
+  for (const c of conexoes) c.write(linha);
 }
 
 function registrarStatus(item) {
@@ -164,10 +166,12 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
-function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem }) {
+function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, cliente, ajuste }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
   if (origem) ordem.origem = origem; // ex.: { telegram: { chat, msg } } para responder no mesmo lugar
+  if (cliente && clientes.existe(cliente)) ordem.cliente = cliente; // a ficha do cliente vai junto para o agente
+  if (ajuste) ordem.ajuste = ajuste; // refazer uma entrega: { ordemId, indice, original, anterior }
   if (decisao) {
     ordem.decisao = decisao; // como o Crânio (Laya) decidiu, com que certeza e urgência
     documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`);
@@ -194,8 +198,8 @@ function descreverDecisao(d, ordem) {
 
 // Toda decisão passa pelo Crânio: ordens com agente indicado (pelo chefe ou por
 // quem delega) são avaliadas por ele antes de existir. Sem o Laya, seguem direto.
-async function encaminhar({ para, texto, de = 'chefe', contexto, origem }) {
-  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem });
+async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente }) {
+  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem, cliente });
   let decisao;
   try {
     decisao = await decisor.avaliar(texto, motores.equipe(), para, de);
@@ -203,17 +207,36 @@ async function encaminhar({ para, texto, de = 'chefe', contexto, origem }) {
     console.warn(`[crânio] ${erro.message}`);
     decisao = { por: 'Laya', modo: 'indisponivel', motivo: erro.message.slice(0, 120), agente: para };
   }
-  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem });
+  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem, cliente });
 }
 
 // Ordem do chefe (pela página ou pelo Telegram). para = id do agente, "todos" ou "auto" (o Laya escolhe).
-async function ordemDoChefe({ para, texto, origem }) {
+async function ordemDoChefe({ para, texto, origem, cliente }) {
   texto = texto.slice(0, 2000);
-  if (para !== 'auto') return encaminhar({ para, texto, origem });
+  if (cliente && !clientes.existe(cliente)) throw new Error(`cliente "${cliente}" não cadastrado`);
+  // "auto" sem o Laya: vai para o Orquestrador (ou para todos, se não houver)
+  if (para === 'auto' && !decisor.ativo()) para = motores.equipe().orquestrador ? 'orquestrador' : 'todos';
+  if (para !== 'auto') return encaminhar({ para, texto, origem, cliente });
   const decisao = await decisor.decidir(texto, motores.equipe());
-  return criarOrdem({ para: decisao.agente, texto, decisao, origem });
+  return criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente });
+}
+
+// Ajuste: o mesmo agente refaz uma entrega dele, vendo o pedido original e o que entregou.
+function pedirAjuste({ ordemId, indice, texto, origem }) {
+  const anterior = ordens.find((o) => o.id === ordemId);
+  const r = anterior?.respostas[Number(indice)];
+  if (!r || r.erro || r.simulada) throw new Error('entrega não encontrada');
+  if (!motores.equipe()[r.agente]) throw new Error(`${r.agente} não está mais na equipe`);
+  texto = String(texto || '').trim().slice(0, 2000);
+  if (!texto) throw new Error('diga o que ajustar');
+  return criarOrdem({
+    para: r.agente, texto, cliente: anterior.cliente, origem: origem || anterior.origem,
+    ajuste: { ordemId, indice: Number(indice), original: (anterior.ajuste?.original || anterior.texto).slice(0, 4000), anterior: r.texto.slice(0, 12000) },
+  });
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
+const clientes = criarClientes({ dadosDir: DADOS_DIR });
+const rotinas = criarRotinas({ dadosDir: DADOS_DIR, disparar: (r) => ordemDoChefe({ para: r.para, texto: r.texto, cliente: r.cliente, origem: { rotina: r.id } }) });
 const telegram = criarTelegram({
   dadosDir: DADOS_DIR,
   nomeDe: (id) => id.charAt(0).toUpperCase() + id.slice(1),
@@ -221,9 +244,12 @@ const telegram = criarTelegram({
   status: (id) => estado.get(id),
   cranioAtivo: () => decisor.ativo(),
   aoOrdem: (dados) => ordemDoChefe(dados),
+  aoAjuste: (dados) => pedirAjuste(dados),
+  clientes,
+  rotinas: () => rotinas.listar(),
 });
-const entregas = criarEntregas({ dadosDir: DADOS_DIR, aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
-const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)) });
+const entregas = criarEntregas({ dadosDir: DADOS_DIR, nomeCliente: (id) => clientes.nomeDe(id), aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
+const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)), fichaCliente: (id) => clientes.ficha(id) });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
   equipe: () => motores.equipe(),
@@ -284,16 +310,50 @@ async function atender(req, res) {
     if (!texto) return enviarJSON(res, 400, { erro: 'campo "texto" obrigatório' });
     if (typeof dados.para !== 'string' || !dados.para) return enviarJSON(res, 400, { erro: 'campo "para" obrigatório (id do agente ou "todos")' });
     try {
-      return enviarJSON(res, 201, await ordemDoChefe({ para: dados.para, texto }));
+      return enviarJSON(res, 201, await ordemDoChefe({ para: dados.para, texto, cliente: typeof dados.cliente === 'string' ? dados.cliente : '' }));
     } catch (erro) {
+      if (/cliente/.test(erro.message)) return enviarJSON(res, 400, { erro: erro.message });
       console.error('[decisor]', erro.message);
       return enviarJSON(res, 502, { erro: `o Laya não conseguiu decidir: ${erro.message}` });
     }
   }
 
+  const ajuste = rota.match(/^\/api\/ordens\/([\w-]+)\/ajuste$/);
+  if (ajuste && req.method === 'POST') {
+    let dados;
+    try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
+    try { return enviarJSON(res, 201, pedirAjuste({ ordemId: ajuste[1], indice: dados.indice, texto: dados.texto })); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
+  // ---------- clientes ----------
+  if (rota === '/api/clientes' && req.method === 'GET') return enviarJSON(res, 200, clientes.listar());
+  const cliente = rota.match(/^\/api\/clientes(?:\/([\w-]{1,40}))?$/);
+  if (cliente && (req.method === 'POST' || req.method === 'DELETE')) {
+    try {
+      if (req.method === 'DELETE') { await clientes.remover(cliente[1]); transmitirSemSalvar('clientes', clientes.listar()); return enviarJSON(res, 200, clientes.listar()); }
+      const salvo = await clientes.salvar(cliente[1], await lerCorpo(req));
+      documentacao.registrar(`Clientes: ficha de ${salvo.nome} ${cliente[1] ? 'atualizada' : 'criada'}`);
+      transmitirSemSalvar('clientes', clientes.listar());
+      return enviarJSON(res, 200, salvo);
+    } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
+  // ---------- rotinas ----------
+  if (rota === '/api/rotinas' && req.method === 'GET') return enviarJSON(res, 200, rotinas.listar());
+  const rotina = rota.match(/^\/api\/rotinas(?:\/([\w-]{1,40}))?(\/rodar)?$/);
+  if (rotina && (req.method === 'POST' || req.method === 'DELETE')) {
+    try {
+      if (rotina[2]) return enviarJSON(res, 200, await rotinas.rodarAgora(rotina[1]));
+      if (req.method === 'DELETE') { await rotinas.remover(rotina[1]); return enviarJSON(res, 200, rotinas.listar()); }
+      const dados = await lerCorpo(req);
+      if (dados.cliente && !clientes.existe(dados.cliente)) throw new Error('cliente não cadastrado');
+      return enviarJSON(res, 200, await rotinas.salvar(rotina[1], dados));
+    } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
   // ---------- arquivo de entregas ----------
   if (rota === '/api/entregas') {
-    return enviarJSON(res, 200, entregas.listar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '', pagina: url.searchParams.get('pagina') }));
+    return enviarJSON(res, 200, entregas.listar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '', cliente: url.searchParams.get('cliente') || '', pagina: url.searchParams.get('pagina') }));
   }
   if (rota === '/api/entregas/arquivo') {
     try {
@@ -303,7 +363,7 @@ async function atender(req, res) {
     } catch { return enviarJSON(res, 404, { erro: 'entrega não encontrada' }); }
   }
   if (rota === '/api/entregas/exportar') {
-    const texto = await entregas.exportar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '' });
+    const texto = await entregas.exportar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '', cliente: url.searchParams.get('cliente') || '' });
     res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="entregas.md"' });
     return res.end(texto);
   }
@@ -407,9 +467,9 @@ async function atender(req, res) {
   if (rota === '/api/eventos') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(': conectado\n\n');
-    clientes.add(res);
+    conexoes.add(res);
     const pulso = setInterval(() => res.write(': ping\n\n'), 25000);
-    req.on('close', () => { clearInterval(pulso); clientes.delete(res); });
+    req.on('close', () => { clearInterval(pulso); conexoes.delete(res); });
     return;
   }
 
@@ -468,6 +528,9 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 
 await carregar();
 await documentacao.carregar();
+await clientes.carregar();
+await rotinas.carregar();
+rotinas.iniciar();
 await entregas.carregar(ordens);
 telegram.iniciar();
 motores.iniciar(estado);

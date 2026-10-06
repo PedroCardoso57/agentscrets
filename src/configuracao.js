@@ -28,7 +28,7 @@ const PRESETS = {
 
 const CHAVE_DO_PROVEDOR = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY' };
 
-async function api(caminho, corpo) {
+export async function api(caminho, corpo) {
   const r = await fetch(caminho, corpo === undefined ? { cache: 'no-store' } : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
   });
@@ -37,7 +37,7 @@ async function api(caminho, corpo) {
   return dados;
 }
 
-function el(tag, attrs = {}, ...filhos) {
+export function el(tag, attrs = {}, ...filhos) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') e.className = v;
@@ -104,6 +104,13 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
     const webhook = el('input', { name: 'webhook', value: atual.webhook || '', placeholder: 'https://seu-n8n.com/webhook/agente' });
     const esforco = el('select', { name: 'esforco' }, ['low', 'medium', 'high', 'xhigh', 'max'].map((v) => el('option', { value: v, selected: v === (atual.esforco || 'medium') }, v)));
     const delegar = el('input', { type: 'checkbox', name: 'delegar', checked: Boolean(atual.delegar) });
+    const revisar = el('input', { type: 'checkbox', name: 'revisar', checked: Boolean(atual.revisar) });
+    const internet = el('input', { type: 'checkbox', name: 'internet', checked: Boolean(atual.internet) });
+    const linhaInternet = el('label', { class: 'linha' }, internet, el('span', {}, 'Pesquisa na internet e cita as fontes (Claude ou Gemini)'));
+    // IA reserva: empresta a IA de outro agente quando a deste der limite de uso (erro 429)
+    const reserva = el('select', { name: 'reserva' }, el('option', { value: '' }, 'Nenhuma'),
+      Object.entries(estado.agentes).filter(([outro, o]) => outro !== id && o.provedor !== 'webhook')
+        .map(([outro]) => el('option', { value: outro, selected: atual.reserva === outro }, `IA do ${nomeDe(outro)} (${estado.rotulos[outro]})`)));
     const funcao = el('input', { name: 'funcao', value: atual.funcao || '', placeholder: 'ex.: Escreve legendas e roteiros' });
     const instrucoes = el('textarea', { name: 'instrucoes', rows: 7, placeholder: 'Você é o … da agência. …' }, atual.instrucoes || '');
     const statusChave = el('p', { class: 'chave' });
@@ -154,6 +161,8 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       grupos.compat.hidden = p !== 'compativel';
       grupos.webhook.hidden = p !== 'webhook';
       grupos.esforco.hidden = p !== 'anthropic';
+      linhaInternet.hidden = !['anthropic', 'gemini'].includes(p);
+      if (linhaInternet.hidden) internet.checked = false;
       datalist.replaceChildren(...(SUGESTOES[p] || []).map((m) => el('option', { value: m })));
       const nomeChave = p === 'compativel' ? chaveEnv.value.trim() : CHAVE_DO_PROVEDOR[p];
       if (!nomeChave) { statusChave.textContent = p === 'webhook' ? '' : 'Sem chave de API.'; statusChave.className = 'chave'; return; }
@@ -171,7 +180,7 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
     function dados() {
       return {
         provedor: provedor.value, modelo: modelo.value, baseUrl: baseUrl.value, chaveEnv: chaveEnv.value, webhook: webhook.value,
-        esforco: esforco.value, delegar: delegar.checked, funcao: funcao.value, instrucoes: instrucoes.value,
+        esforco: esforco.value, delegar: delegar.checked, revisar: revisar.checked, internet: internet.checked, reserva: reserva.value, funcao: funcao.value, instrucoes: instrucoes.value,
       };
     }
 
@@ -217,9 +226,12 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       el('h3', {}, nomeDe(id)),
       campo('IA', provedor),
       grupos.modelo, listaModelos, grupos.compat, grupos.webhook, statusChave, grupos.esforco,
+      campo('IA reserva (quando esta der limite de uso)', reserva, 'Se a IA deste agente der erro 429, ele espera e tenta de novo; se continuar, usa a IA escolhida aqui. Prefira outro provedor (ex.: Groq ou OpenRouter se este é Gemini).'),
       campo('Função (o Orquestrador lê isto para decidir a quem passar cada tarefa)', funcao),
       campo('Instruções (o papel e o jeito de trabalhar deste agente)', instrucoes),
       el('label', { class: 'linha' }, delegar, el('span', {}, 'Pode delegar tarefas para a equipe (Orquestrador)')),
+      id !== 'revisor' ? el('label', { class: 'linha' }, revisar, el('span', {}, 'Entregas passam pelo Revisor antes de chegar em você')) : null,
+      linhaInternet,
       el('div', { class: 'acoes' },
         el('button', { type: 'button', class: 'secundario', onclick: testar }, 'Testar'),
         el('button', { type: 'submit' }, 'Salvar'),

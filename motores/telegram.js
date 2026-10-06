@@ -15,12 +15,22 @@ const LIMITE_MENSAGEM = 4096;
 
 const ICONE_STATUS = { ocioso: '⚪', trabalhando: '🟢', aguardando: '🟡', concluido: '🔵', erro: '🔴' };
 
-export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => [], status = () => null, cranioAtivo = () => false, aoOrdem }) {
+export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => [], status = () => null, cranioAtivo = () => false, aoOrdem, aoAjuste, clientes, rotinas = () => [] }) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const arquivo = join(dadosDir, 'telegram.json');
   let chatId = process.env.TELEGRAM_CHAT_ID || null;
   let fila = Promise.resolve();
   let ouvindo = null;
+  let conexao = {}; // o que fica em telegram.json
+  const mensagensDeEntrega = new Map(); // id da mensagem no Telegram → { ordemId, indice } (para pedir ajuste respondendo)
+  const MAX_LEMBRADAS = 500;
+
+  async function gravarConexao() {
+    conexao.chatId = chatId;
+    conexao.entregas = Object.fromEntries([...mensagensDeEntrega].slice(-MAX_LEMBRADAS));
+    await mkdir(dadosDir, { recursive: true });
+    await writeFile(arquivo, JSON.stringify(conexao));
+  }
 
   const ativo = () => Boolean(token);
 
@@ -56,8 +66,12 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
       `• Só escreva o pedido: ${cranioAtivo() ? 'o 🔮 Crânio escolhe quem faz' : ids.includes('orquestrador') ? 'vai para o Orquestrador, que distribui' : 'vai para toda a equipe'}.`,
       `• Para alguém específico: /${exemplo} escreva 3 legendas para o post de segunda`,
       '• Para todos: /todos reunião às 15h',
+      '• Para um cliente: comece com #cliente (ex.: #padaria /redator legenda de natal)',
+      '• Para ajustar uma entrega: responda à mensagem dela dizendo o que mudar',
       '',
       '/equipe — quem está fazendo o quê',
+      '/clientes — clientes cadastrados',
+      '/rotinas — ordens agendadas',
       '/ajuda — esta mensagem',
       '',
       `Equipe: ${ids.map((id) => `/${id}`).join(' ')}`,
@@ -72,14 +86,40 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
     return linhas.length ? linhas.join('\n') : 'Nenhum agente configurado.';
   }
 
-  // "/redator texto", "@redator texto", "/todos texto" ou só o texto.
-  function interpretar(texto) {
+  function textoClientes() {
+    const lista = clientes?.listar() || [];
+    if (!lista.length) return 'Nenhum cliente cadastrado. Cadastre em 📇 Clientes, no escritório.';
+    return `Clientes (use #id no começo da ordem):\n${lista.map((c) => `• #${c.id} — ${c.nome}${c.nicho ? ` (${c.nicho})` : ''}`).join('\n')}`;
+  }
+
+  function textoRotinas() {
+    const lista = rotinas();
+    if (!lista.length) return 'Nenhuma rotina agendada. Crie em 🗓 Rotinas, no escritório.';
+    return lista.map((r) => `${r.ativa ? '🟢' : '⏸'} ${r.nome} — ${r.quando}${r.cliente ? ` · #${r.cliente}` : ''}`).join('\n');
+  }
+
+  // "#cliente /redator texto", "/redator #cliente texto", "@redator texto", "/todos texto" ou só o texto.
+  function interpretar(textoOriginal) {
+    let texto = textoOriginal;
+    let cliente = '';
+    const tag = texto.match(/(^|\s)#([\w-]+)/);
+    if (tag && !/^\/(start|ajuda|help|equipe|status|clientes|rotinas)\b/i.test(texto)) {
+      cliente = clientes?.achar(tag[2]) || null;
+      if (!cliente) return { clienteDesconhecido: tag[2] };
+      texto = texto.replace(tag[0], ' ').trim();
+    }
+    const comando = interpretarAlvo(texto);
+    return cliente ? { ...comando, cliente } : comando;
+  }
+
+  function interpretarAlvo(texto) {
     const m = texto.match(/^[/@]([\w-]+)(?:@\w+)?\s*([\s\S]*)$/);
     if (!m) return { pedido: texto };
     const alvo = m[1].toLowerCase();
     if (alvo === 'start') return { comando: 'start' };
     if (alvo === 'ajuda' || alvo === 'help') return { comando: 'ajuda' };
     if (alvo === 'equipe' || alvo === 'status') return { comando: 'equipe' };
+    if (alvo === 'clientes' || alvo === 'rotinas') return { comando: alvo };
     if (alvo === 'todos' || equipe().includes(alvo)) return { para: alvo, pedido: m[2].trim() };
     return { desconhecido: alvo };
   }
@@ -91,8 +131,8 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
 
   async function conectar(chat) {
     chatId = String(chat.id);
-    await mkdir(dadosDir, { recursive: true });
-    await writeFile(arquivo, JSON.stringify({ chatId, nome: chat.first_name || chat.title || '', em: new Date().toISOString() }));
+    conexao = { nome: chat.first_name || chat.title || '', em: new Date().toISOString() };
+    await gravarConexao();
     console.log(`[telegram] conectado ao chat ${chatId}`);
   }
 
@@ -115,15 +155,31 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
 
     if (comando.comando === 'start' || comando.comando === 'ajuda') return responder(chatId, ajuda());
     if (comando.comando === 'equipe') return responder(chatId, textoEquipe());
+    if (comando.comando === 'clientes') return responder(chatId, textoClientes());
+    if (comando.comando === 'rotinas') return responder(chatId, textoRotinas());
+
+    // respondeu a uma entrega: é um pedido de ajuste para o mesmo agente
+    const entrega = msg.reply_to_message && mensagensDeEntrega.get(String(msg.reply_to_message.message_id));
+    if (entrega && !comando.comando) {
+      try {
+        const ordem = aoAjuste({ ...entrega, texto, origem: { telegram: { chat: chatId, msg: msg.message_id } } });
+        return responder(chatId, `↩ ${nomeDe(ordem.para)} vai ajustar. A nova versão chega aqui.`, msg.message_id);
+      } catch (erro) {
+        return responder(chatId, `⚠️ Não consegui pedir o ajuste: ${erro.message}`, msg.message_id);
+      }
+    }
+
+    if (comando.clienteDesconhecido) return responder(chatId, `Não conheço o cliente "#${comando.clienteDesconhecido}".\n\n${textoClientes()}`, msg.message_id);
     if (comando.desconhecido) return responder(chatId, `Não conheço "${comando.desconhecido}" na equipe.\n\n${ajuda()}`, msg.message_id);
     if (!comando.pedido) return responder(chatId, `Escreva o pedido depois do nome. Ex.: /${comando.para} ...`, msg.message_id);
 
     try {
-      const ordem = await aoOrdem({ para: comando.para || padrao(), texto: comando.pedido, origem: { telegram: { chat: chatId, msg: msg.message_id } } });
+      const ordem = await aoOrdem({ para: comando.para || padrao(), texto: comando.pedido, cliente: comando.cliente, origem: { telegram: { chat: chatId, msg: msg.message_id } } });
       const d = ordem.decisao;
       const quem = ordem.para === 'todos' ? 'toda a equipe' : nomeDe(ordem.para);
       const cranio = d && d.modo !== 'indisponivel' ? ` 🔮 Crânio: ${Math.round((d.confianca || 0) * 100)}%${d.modo === 'redirecionou' ? ` (redirecionou de ${nomeDe(d.sugerido)})` : ''}` : '';
-      responder(chatId, `📨 Ordem enviada para ${quem}.${cranio}\nA entrega chega aqui quando ficar pronta.`, msg.message_id);
+      const paraQuem = ordem.cliente ? ` · cliente ${clientes.nomeDe(ordem.cliente)}` : '';
+      responder(chatId, `📨 Ordem enviada para ${quem}${paraQuem}.${cranio}\nA entrega chega aqui quando ficar pronta. Para ajustar, responda à entrega.`, msg.message_id);
     } catch (erro) {
       responder(chatId, `⚠️ Não consegui passar a ordem: ${erro.message}`, msg.message_id);
     }
@@ -149,8 +205,11 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
   async function iniciar() {
     if (!ativo()) return;
     if (!chatId) {
-      try { chatId = JSON.parse(await readFile(arquivo, 'utf8')).chatId || null; } catch { /* ainda não conectado */ }
+      try { conexao = JSON.parse(await readFile(arquivo, 'utf8')); chatId = conexao.chatId || null; } catch { /* ainda não conectado */ }
+    } else {
+      try { conexao = JSON.parse(await readFile(arquivo, 'utf8')); } catch { /* sem histórico */ }
     }
+    for (const [msgId, alvo] of Object.entries(conexao.entregas || {})) mensagensDeEntrega.set(msgId, alvo);
     try {
       const bot = await chamar('getMe');
       console.log(chatId ? `[telegram] @${bot.username} conectado: ordens e entregas pelo chat` : `[telegram] mande /start para @${bot.username} para conectar`);
@@ -161,18 +220,23 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
   }
 
   // Envia uma entrega; se a ordem veio do Telegram, chega como resposta à mensagem dela.
-  function enviarEntrega({ agente, de, motor, pedido, texto, arquivo: nomeArquivo, conteudo, origem }) {
+  function enviarEntrega({ agente, de, motor, pedido, texto, arquivo: nomeArquivo, conteudo, origem, ordemId, indice, cliente, revisado, ajuste }) {
     if (!ativo() || !chatId) return;
     const emResposta = origem?.telegram?.chat === chatId ? origem.telegram.msg : null;
     enfileirar(async () => {
-      const cabecalho = `📦 ${nomeDe(agente)}${de && de !== 'chefe' ? ` (pedido de ${nomeDe(de)})` : ''}\n📝 ${pedido.split('\n')[0].slice(0, 150)}\n🤖 ${motor}\n\n`;
+      const marcas = [cliente ? `👤 ${clientes?.nomeDe(cliente) || cliente}` : null, ajuste ? '↩ ajuste' : null, revisado ? '✅ revisado' : null].filter(Boolean).join(' · ');
+      const cabecalho = `📦 ${nomeDe(agente)}${de && de !== 'chefe' ? ` (pedido de ${nomeDe(de)})` : ''}${marcas ? `\n${marcas}` : ''}\n📝 ${pedido.split('\n')[0].slice(0, 150)}\n🤖 ${motor}\n\n`;
       const legenda = (cabecalho + texto).slice(0, LIMITE_LEGENDA - 1) + (cabecalho.length + texto.length >= LIMITE_LEGENDA ? '…' : '');
       const form = new FormData();
       form.append('chat_id', chatId);
       form.append('caption', legenda);
       if (emResposta) form.append('reply_parameters', JSON.stringify({ message_id: emResposta, allow_sending_without_reply: true }));
       form.append('document', new Blob([conteudo], { type: 'text/markdown' }), nomeArquivo.split('/').pop());
-      await chamar('sendDocument', form);
+      const enviada = await chamar('sendDocument', form);
+      if (enviada?.message_id && ordemId) {
+        mensagensDeEntrega.set(String(enviada.message_id), { ordemId, indice });
+        await gravarConexao();
+      }
     });
   }
 

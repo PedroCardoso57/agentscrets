@@ -8,7 +8,7 @@
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PROVEDORES } from './provedores.js';
+import { chamarIA } from './provedores.js';
 
 const MAX_EVENTOS = 300;
 const MAX_DOC = 40000; // acima disso, o documentador é instruído a condensar o histórico
@@ -109,7 +109,7 @@ ${time}`;
       await naFila(id, async () => {
         registrarStatus({ id, status: 'trabalhando', tarefa: 'Atualizando a documentação do projeto' });
         const pedido = `DOCUMENTO ATUAL:\n\n${texto}\n\nEVENTOS NOVOS (${lote.length}):\n${lote.map((e) => `- ${e.em.slice(0, 16).replace('T', ' ')} — ${e.texto}`).join('\n') || '(nenhum: revise e melhore o documento)'}`;
-        let novo = await PROVEDORES[c.provedor]({ ...c, instrucoes: instrucoes(id, cfgTodos), pedido, maxTokens: 32000 });
+        let { texto: novo } = await chamarIA(c, { instrucoes: instrucoes(id, cfgTodos), pedido, maxTokens: 32000 }, { cfg: cfgTodos });
         novo = String(novo || '').replace(/^```(?:markdown|md)?\s*/i, '').replace(/```\s*$/, '').trim();
         if (novo.length < 80 || !novo.includes('#')) throw new Error('a IA devolveu um documento vazio ou fora do formato');
         await mkdir(dadosDir, { recursive: true });
