@@ -53,9 +53,198 @@ export function posicaoChefe(totalAgentes) {
 // Corredores por onde o chefe anda sem atravessar as mesas.
 export const CORREDOR_X = (COLUNAS * ESPACO_X) / 2 + 0.95;
 
+// ---------- ambiente: marca, mural, relógio e dia/noite ----------
+// A sala é recriada quando a equipe muda; o que precisa sobreviver fica aqui.
+
+const AMBIENTE = {
+  marca: { nome: 'agentscrets', cor: '#e11d2a' },
+  clientes: [],
+  logo: null, mural: null, relogio: null,
+  vidros: [], pendentes: [],
+};
+const FONTE = 'Montserrat, system-ui, sans-serif';
+
+// placa da marca: bloco na cor da marca com o nome em branco
+function pintarLogo() {
+  const { logo, marca } = AMBIENTE;
+  if (!logo) return;
+  const c = logo.userData.canvas;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = marca.cor;
+  ctx.beginPath(); ctx.roundRect(8, 8, c.width - 16, c.height - 16, 26); ctx.fill();
+  ctx.fillStyle = '#fff';
+  let px = 92;
+  ctx.font = `800 ${px}px ${FONTE}`;
+  while (ctx.measureText(marca.nome).width > c.width - 80 && px > 30) { px -= 4; ctx.font = `800 ${px}px ${FONTE}`; }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(marca.nome, c.width / 2, c.height / 2 + 4);
+  logo.material.map.needsUpdate = true;
+}
+
+export function definirMarcaSala(nome, cor) {
+  AMBIENTE.marca = { nome: nome || AMBIENTE.marca.nome, cor: cor || AMBIENTE.marca.cor };
+  pintarLogo();
+  // a fonte da marca pode chegar depois: repinta quando carregar
+  document.fonts?.load(`800 64px ${FONTE}`).then(pintarLogo, () => {});
+}
+
+// mural de cortiça com os clientes em post-its
+function pintarMural() {
+  const { mural, clientes } = AMBIENTE;
+  if (!mural) return;
+  const c = mural.userData.canvas;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#3b2a1f'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#b98a5a'; ctx.fillRect(14, 14, c.width - 28, c.height - 28);
+  for (let i = 0; i < 400; i++) { // textura de cortiça
+    ctx.fillStyle = `rgba(80, 50, 25, ${Math.random() * 0.25})`;
+    ctx.fillRect(14 + Math.random() * (c.width - 28), 14 + Math.random() * (c.height - 28), 3, 3);
+  }
+  ctx.fillStyle = AMBIENTE.marca.cor;
+  ctx.font = `800 30px ${FONTE}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('CLIENTES', 34, 26);
+  const notas = clientes.length ? clientes.slice(0, 8) : ['Cadastre seus', 'clientes no', 'menu Clientes'];
+  const cores = ['#fde68a', '#fbcfe8', '#bfdbfe', '#bbf7d0'];
+  notas.forEach((nome, i) => {
+    const col = i % 4; const lin = Math.floor(i / 4);
+    const x = 34 + col * 118; const y = 76 + lin * 100;
+    ctx.save();
+    ctx.translate(x + 52, y + 42); ctx.rotate(((i * 37) % 9 - 4) * 0.015);
+    ctx.fillStyle = '#0003'; ctx.fillRect(-48, -36, 104, 84);
+    ctx.fillStyle = cores[i % cores.length]; ctx.fillRect(-52, -40, 104, 84);
+    ctx.fillStyle = '#e11d2a'; ctx.beginPath(); ctx.arc(0, -32, 5, 0, Math.PI * 2); ctx.fill(); // tachinha
+    ctx.fillStyle = '#1f2937'; ctx.font = `700 15px ${FONTE}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // quebra o nome em até 3 linhas
+    const palavras = String(nome).split(' '); const linhas = [''];
+    for (const p of palavras) { const t = linhas.at(-1) ? `${linhas.at(-1)} ${p}` : p; if (ctx.measureText(t).width > 92 && linhas.at(-1)) linhas.push(p); else linhas[linhas.length - 1] = t; }
+    linhas.slice(0, 3).forEach((l, k) => ctx.fillText(l, 0, -4 + (k - (Math.min(linhas.length, 3) - 1) / 2) * 18));
+    ctx.restore();
+  });
+  mural.material.map.needsUpdate = true;
+}
+
+export function definirClientesMural(nomes) {
+  AMBIENTE.clientes = nomes;
+  pintarMural();
+}
+
+// relógio de parede no horário de Brasília
+let ultimoMinuto = -1;
+export function atualizarRelogio(data = new Date()) {
+  const { relogio } = AMBIENTE;
+  if (!relogio) return;
+  const [h, m] = data.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).split(':').map(Number);
+  if (m === ultimoMinuto) return;
+  ultimoMinuto = m;
+  const c = relogio.userData.canvas;
+  const ctx = c.getContext('2d');
+  const r = c.width / 2;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(r, r, r - 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f5f5f4'; ctx.beginPath(); ctx.arc(r, r, r - 14, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#111';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.lineWidth = i % 3 ? 3 : 7;
+    ctx.beginPath(); ctx.moveTo(r + Math.sin(a) * (r - 26), r - Math.cos(a) * (r - 26)); ctx.lineTo(r + Math.sin(a) * (r - 40), r - Math.cos(a) * (r - 40)); ctx.stroke();
+  }
+  const ponteiro = (ang, comp, larg, cor) => {
+    ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(r, r); ctx.lineTo(r + Math.sin(ang) * comp, r - Math.cos(ang) * comp); ctx.stroke();
+  };
+  ponteiro(((h % 12) + m / 60) / 12 * Math.PI * 2, r * 0.45, 9, '#111');
+  ponteiro(m / 60 * Math.PI * 2, r * 0.68, 6, '#111');
+  ctx.fillStyle = AMBIENTE.marca.cor; ctx.beginPath(); ctx.arc(r, r, 9, 0, Math.PI * 2); ctx.fill();
+  relogio.material.map.needsUpdate = true;
+}
+
+// Quanto é dia agora (0 = noite, 1 = dia), pelo horário de Brasília. ?hora=22 na URL força um horário.
+export function fatorDia(data = new Date()) {
+  const forcada = Number(new URLSearchParams(location.search).get('hora'));
+  const [h, m] = data.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).split(':').map(Number);
+  const hora = Number.isFinite(forcada) && new URLSearchParams(location.search).has('hora') ? forcada : h + m / 60;
+  const suave = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  return suave(5.5, 7.5, hora) * (1 - suave(17.5, 19.5, hora));
+}
+
+const COR_DIA = new THREE.Color('#ffffff');
+const COR_NOITE = new THREE.Color('#26304d');
+// Ajusta luzes, fundo e janelas ao horário. k: 0 = noite, 1 = dia.
+export function aplicarDiaNoite(k, { cena, hemi, sol }) {
+  cena.background.set('#08080b').lerp(new THREE.Color('#17171c'), k);
+  cena.fog.color.copy(cena.background);
+  hemi.intensity = 0.45 + 0.75 * k;
+  hemi.color.set('#9fb0ff').lerp(new THREE.Color('#fff6e8'), k);
+  sol.intensity = 0.35 + 1.25 * k;
+  sol.color.set('#9fb4ff').lerp(new THREE.Color('#fff1d6'), k);
+  for (const v of AMBIENTE.vidros) v.color.copy(COR_NOITE).lerp(COR_DIA, k);
+  for (const p of AMBIENTE.pendentes) {
+    p.luz.intensity = 1.5 + 7.5 * (1 - k);
+    p.lampada.material.emissiveIntensity = 0.8 + 2.2 * (1 - k);
+  }
+}
+
+function canvasPlano(largura, altura, w, h, { transparente = false, basico = true } = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const textura = new THREE.CanvasTexture(canvas);
+  textura.colorSpace = THREE.SRGBColorSpace;
+  const material = basico ? new THREE.MeshBasicMaterial({ map: textura, transparent: transparente }) : new THREE.MeshStandardMaterial({ map: textura, roughness: 0.9, transparent: transparente });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(largura, altura), material);
+  m.userData.canvas = canvas;
+  return m;
+}
+
+// luminária pendente: fio, cúpula preta e lâmpada (a luz fica mais forte à noite)
+function pendente(x, z, altura = 3.0) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.add(cilindro(0.008, 0.008, 3.6 - altura, mat('#111'), 0, altura + (3.6 - altura) / 2, 0, 6));
+  const cupula = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.26, 24, 1, true), mat('#15151a', { side: THREE.DoubleSide, metalness: 0.3, roughness: 0.5 }));
+  cupula.position.y = altura - 0.1;
+  g.add(cupula);
+  const lampada = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), new THREE.MeshStandardMaterial({ color: '#fff3d6', emissive: '#ffd9a0', emissiveIntensity: 1 }));
+  lampada.position.y = altura - 0.2;
+  g.add(lampada);
+  const luz = new THREE.PointLight('#ffd9a0', 1, 9, 1.2);
+  luz.position.y = altura - 0.3;
+  g.add(luz);
+  AMBIENTE.pendentes.push({ luz, lampada });
+  return g;
+}
+
+// estante com livros coloridos
+function estante(x, z) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.PI / 2;
+  const madeira = mat('#2a2a30');
+  g.add(caixa(1.6, 1.9, 0.04, madeira, 0, 0.95, -0.17));
+  for (const sx of [-1, 1]) g.add(caixa(0.04, 1.9, 0.36, madeira, sx * 0.78, 0.95, 0));
+  const coresLivro = ['#e11d2a', '#f4f4f5', '#3f3f46', '#fbbf24', '#60a5fa', '#a1a1aa'];
+  for (let n = 0; n < 4; n++) {
+    const y = 0.05 + n * 0.46;
+    g.add(caixa(1.56, 0.03, 0.34, madeira, 0, y, 0));
+    let px = -0.7;
+    let i = n * 3;
+    while (px < 0.6) {
+      const larg = 0.05 + ((i * 7) % 4) * 0.012;
+      const alt = 0.26 + ((i * 5) % 5) * 0.025;
+      g.add(caixa(larg, alt, 0.24, mat(coresLivro[i % coresLivro.length]), px + larg / 2, y + 0.015 + alt / 2, 0));
+      px += larg + 0.008;
+      i++;
+      if (i % 7 === 0) px += 0.12; // espaço vazio
+    }
+  }
+  return g;
+}
+
 // ---------- sala ----------
 
 export function criarSala(totalAgentes) {
+  AMBIENTE.vidros = [];
+  AMBIENTE.pendentes = [];
   const sala = new THREE.Group();
   const pods = Math.max(1, Math.ceil(totalAgentes / (COLUNAS * 2)));
   const largura = COLUNAS * ESPACO_X + 9;
@@ -73,34 +262,64 @@ export function criarSala(totalAgentes) {
 
   // tapete sob as mesas
   for (let p = 0; p < pods; p++) {
-    const tapete = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.6, 5.4), mat('#3a4560'));
+    // tapete grafite com borda na cor da marca
+    const borda = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.8, 5.6), mat(AMBIENTE.marca.cor, { roughness: 0.95 }));
+    borda.rotation.x = -Math.PI / 2;
+    borda.position.set(0, 0.004, p * ESPACO_POD);
+    borda.receiveShadow = true;
+    sala.add(borda);
+    const tapete = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.6, 5.4), mat('#2a2a31', { roughness: 0.95 }));
     tapete.rotation.x = -Math.PI / 2;
-    tapete.position.set(0, 0.005, p * ESPACO_POD);
+    tapete.position.set(0, 0.006, p * ESPACO_POD);
     tapete.receiveShadow = true;
     sala.add(tapete);
+    // pendentes sobre as mesas
+    sala.add(pendente(-ESPACO_X, p * ESPACO_POD));
+    sala.add(pendente(ESPACO_X, p * ESPACO_POD));
   }
 
   // paredes (só fundo e esquerda, estilo "casa de bonecas")
-  const parede = mat('#e9e4da');
+  // fundo claro (concreto) e parede da marca grafite
   const xEsq = cx - largura / 2;
   const zFundo = cz - profundidade / 2;
-  sala.add(caixa(largura, 3.2, 0.2, parede, cx, 1.6, zFundo));
-  sala.add(caixa(0.2, 3.2, profundidade, parede, xEsq, 1.6, cz));
-  sala.add(caixa(largura, 0.12, 0.06, mat('#c9c1b3'), cx, 0.06, zFundo + 0.12)); // rodapé
-  sala.add(caixa(0.06, 0.12, profundidade, mat('#c9c1b3'), xEsq + 0.12, 0.06, cz));
+  sala.add(caixa(largura, 3.2, 0.2, mat('#dcd8d1'), cx, 1.6, zFundo));
+  sala.add(caixa(0.2, 3.2, profundidade, mat('#232328'), xEsq, 1.6, cz));
+  sala.add(caixa(largura, 0.12, 0.06, mat('#18181b'), cx, 0.06, zFundo + 0.12)); // rodapé
+  sala.add(caixa(0.06, 0.12, profundidade, mat('#18181b'), xEsq + 0.12, 0.06, cz));
 
   // janelas no fundo
-  const nJanelas = Math.floor(largura / 3.2);
+  // o começo da parede fica para o mural de clientes e o relógio
+  const inicioJanelas = xEsq + 5.6;
+  const nJanelas = Math.floor((largura - 5.6) / 3.2);
   for (let i = 0; i < nJanelas; i++) {
-    const x = xEsq + 1.6 + i * (largura - 3.2) / Math.max(1, nJanelas - 1);
+    const x = inicioJanelas + 1.0 + i * (largura - 5.6 - 2.0) / Math.max(1, nJanelas - 1);
     sala.add(janela(x, zFundo + 0.11));
   }
 
-  // logo na parede esquerda
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: texturaTexto('agentscrets', '#1d2230', '#e9e4da', 64), transparent: true }));
+  // placa da marca na parede grafite
+  const logo = canvasPlano(3.2, 0.8, 1024, 256, { transparente: true });
   logo.rotation.y = Math.PI / 2;
-  logo.position.set(xEsq + 0.11, 2.2, cz);
+  logo.position.set(xEsq + 0.115, 2.25, cz);
   sala.add(logo);
+  AMBIENTE.logo = logo;
+  pintarLogo();
+
+  // mural de clientes e relógio na parede do fundo
+  const mural = canvasPlano(2.2, 1.24, 512, 288, { basico: false });
+  mural.position.set(xEsq + 2.6, 1.65, zFundo + 0.115);
+  sala.add(mural);
+  AMBIENTE.mural = mural;
+  pintarMural();
+  const relogio = canvasPlano(0.62, 0.62, 256, 256, { transparente: true });
+  relogio.position.set(xEsq + 4.45, 2.2, zFundo + 0.115);
+  sala.add(relogio);
+  AMBIENTE.relogio = relogio;
+  ultimoMinuto = -1;
+  atualizarRelogio();
+
+  // estante na parede da marca e pendente na copa
+  sala.add(estante(xEsq + 0.3, cz + profundidade / 2 - 2.2));
+  sala.add(pendente(cx + largura / 2 - 2.2, zFundo + 1.6, 3.1));
 
   // copa: mesa com cafeteira, bebedouro e sofá
   const copa = new THREE.Group();
@@ -116,7 +335,7 @@ export function criarSala(totalAgentes) {
   const sofa = new THREE.Group();
   sofa.position.set(xEsq + 1.0, 0, zFundo + 2.6);
   sofa.rotation.y = Math.PI / 2;
-  const tecido = mat('#4b5b7a');
+  const tecido = mat('#7a1c22', { roughness: 0.95 });
   sofa.add(caixa(2.2, 0.4, 0.8, tecido, 0, 0.3, 0));
   sofa.add(caixa(2.2, 0.6, 0.2, tecido, 0, 0.7, -0.3));
   sofa.add(caixa(0.2, 0.55, 0.8, tecido, -1.1, 0.45, 0));
@@ -135,9 +354,10 @@ export function criarSala(totalAgentes) {
 function janela(x, z) {
   const g = new THREE.Group();
   const vidro = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.5), new THREE.MeshBasicMaterial({ map: texturaCeu() }));
+  AMBIENTE.vidros.push(vidro.material); // escurece à noite
   vidro.position.set(x, 1.85, z + 0.005);
   g.add(vidro);
-  const moldura = mat('#ffffff');
+  const moldura = mat('#18181b');
   g.add(caixa(2.1, 0.08, 0.08, moldura, x, 2.62, z + 0.03));
   g.add(caixa(2.1, 0.08, 0.08, moldura, x, 1.08, z + 0.03));
   g.add(caixa(0.08, 1.6, 0.08, moldura, x - 1.03, 1.85, z + 0.03));
@@ -236,6 +456,43 @@ export function criarEstacao(agente) {
   if (agente.atividade === 'ler') {
     for (let i = 0; i < 3; i++) g.add(caixa(0.24, 0.012, 0.32, mat('#f4f1ea'), 0.55, altura + 0.035 + i * 0.013, zCentro + 0.1).rotateY(i * 0.08));
   }
+  // adereços por função (pelo id do agente)
+  if (agente.id === 'programador') {
+    // segundo monitor, virado de lado, com "código"
+    const m2 = new THREE.Group();
+    m2.position.set(0.62, altura + 0.02, zCentro + 0.12);
+    m2.rotation.y = -0.45;
+    m2.add(caixa(0.05, 0.22, 0.04, metal, 0, 0.12, 0.02));
+    m2.add(caixa(0.5, 0.34, 0.035, mat('#15171c'), 0, 0.4, 0));
+    const codigo = canvasPlano(0.46, 0.3, 128, 84);
+    const ctx = codigo.userData.canvas.getContext('2d');
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, 128, 84);
+    ['#7ee787', '#79c0ff', '#ff7b72', '#d2a8ff'].forEach((c, i) => { for (let l = i; l < 10; l += 4) { ctx.fillStyle = c; ctx.fillRect(6 + (l % 3) * 8, 6 + l * 7.5, 30 + ((l * 23) % 70), 3); } });
+    codigo.material.map.needsUpdate = true;
+    codigo.position.set(0, 0.4, -0.019);
+    codigo.rotation.y = Math.PI;
+    m2.add(codigo);
+    g.add(m2);
+  }
+  if (agente.id === 'pesquisador') {
+    const coresLivro = ['#e11d2a', '#3f3f46', '#fbbf24', '#60a5fa'];
+    coresLivro.forEach((c, i) => g.add(caixa(0.3 - i * 0.02, 0.05, 0.22, mat(c), -0.62, altura + 0.05 + i * 0.05, zCentro - 0.02).rotateY((i - 1.5) * 0.12)));
+  }
+  if (agente.id === 'designer') {
+    // pote de lápis coloridos
+    g.add(cilindro(0.05, 0.05, 0.12, mat('#18181b'), 0.42, altura + 0.085, zCentro + 0.12));
+    ['#e11d2a', '#fbbf24', '#60a5fa', '#34d399'].forEach((c, i) => {
+      const lapis = cilindro(0.008, 0.008, 0.2, mat(c), 0.42 + (i - 1.5) * 0.018, altura + 0.2, zCentro + 0.12 + ((i % 2) - 0.5) * 0.02, 6);
+      lapis.rotation.z = (i - 1.5) * 0.12;
+      g.add(lapis);
+    });
+  }
+  if (agente.id === 'revisor') {
+    // carimbo de "aprovado"
+    g.add(cilindro(0.035, 0.045, 0.05, mat('#e11d2a'), 0.5, altura + 0.05, zCentro - 0.25));
+    g.add(cilindro(0.015, 0.015, 0.08, mat('#18181b'), 0.5, altura + 0.11, zCentro - 0.25));
+  }
+
   if (agente.atividade === 'quadro') {
     const quadro = criarQuadroBranco();
     quadro.grupo.position.set(0, 0, -1.55);

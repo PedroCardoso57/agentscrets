@@ -84,7 +84,8 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
       // pedido de ajuste: o agente vê o pedido original e o que ele mesmo entregou
       return `O chefe pediu um ajuste numa entrega sua.\n\nPedido original:\n${ordem.ajuste.original}\n\nSua entrega anterior:\n<<<\n${ordem.ajuste.anterior}\n>>>\n\nAjuste pedido pelo chefe: ${ordem.texto}\n\nDevolva a versão completa já ajustada (não só a parte que mudou).`;
     }
-    return ordem.contexto ? `${ordem.texto}\n\nContexto: ${ordem.contexto}` : ordem.texto;
+    const pedido = ordem.contexto ? `${ordem.texto}\n\nContexto: ${ordem.contexto}` : ordem.texto;
+    return ordem.anexo ? `${pedido}\n\nMaterial:\n<<<\n${ordem.anexo}\n>>>` : pedido;
   }
 
   // O Revisor recebe a entrega e devolve a versão final + observações (na fila dele, uma por vez).

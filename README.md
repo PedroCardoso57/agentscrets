@@ -193,6 +193,16 @@ O botão **📄 Documentação** abre o documento do projeto, que o **Redator** 
 - Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
+## Visual e marca
+
+- **Barra lateral** com os menus (no celular vira a barra de baixo); passe o mouse para ver o nome de cada um. ⌂ volta para a visão do escritório todo.
+- **Faixa "Hoje"** no topo: entregas do dia, quem está trabalhando, erros e a próxima rotina.
+- **Painel com abas** Ordens | Equipe; cada ordem é um cartão na cor do agente, com horário, e respostas longas ficam recolhidas ("ver mais").
+- **Avisos** quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
+- **Escritório vivo**: dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no Revisor e no Pesquisador, gorro no Programador, crachá no Orquestrador, lápis no Redator), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo Revisor quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
+- **Modo lista** (☰ na barra): esconde o 3D e mostra ordens e equipe em tela cheia. No celular ele já começa assim; a escolha fica lembrada no aparelho.
+- **Sua marca**: no `.env`, `MARCA_NOME`, `MARCA_SUBTITULO` e `MARCA_COR` (hex) mudam o topo, a cor de destaque e a placa na parede. Fonte Montserrat.
+
 ## Clientes, ajustes, Revisor, internet e rotinas
 
 ### 📇 Clientes
@@ -209,6 +219,8 @@ Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente bu
 
 ### 🗓 Rotinas
 Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
+
+**☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Redator, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
 
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":

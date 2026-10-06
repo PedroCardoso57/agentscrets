@@ -26,6 +26,11 @@ function cai(r, a) {
   return r.tipo === 'mensal' ? r.diaMes === a.diaMes : r.dias.includes(a.diaSemana);
 }
 
+// Data de ontem no fuso do escritório ('AAAA-MM-DD').
+export function ontem() {
+  return agora(new Date(Date.now() - 24 * 3600 * 1000)).data;
+}
+
 export function descreverQuando(r) {
   if (r.tipo === 'mensal') return `todo dia ${r.diaMes} às ${r.hora}`;
   if (r.dias.length === 7) return `todo dia às ${r.hora}`;
@@ -57,6 +62,7 @@ export function criarRotinas({ dadosDir, disparar }) {
       tipo: dados.tipo === 'mensal' ? 'mensal' : 'semanal',
       hora: typeof dados.hora === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(dados.hora) ? dados.hora : null,
       ativa: dados.ativa !== false,
+      resumoOntem: Boolean(dados.resumoOntem), // junta o que a equipe fez ontem e manda junto
     };
     if (!r.texto) throw new Error('escreva a ordem da rotina');
     if (!r.hora) throw new Error('hora inválida (use HH:MM)');

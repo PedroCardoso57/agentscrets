@@ -14,6 +14,7 @@ const CAMPOS = [
   ['observacoes', 'Outras informações', 'textarea', 'Datas importantes, @ das redes, site…'],
 ];
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const TEXTO_RESUMO = 'Escreva o resumo completo do que a equipe fez ontem, usando só o material anexo (não invente nada). Organize em: 1) Visão geral com os números do dia; 2) O que foi entregue, agrupado por cliente (e o que foi interno), com uma linha sobre cada entrega; 3) Destaques (o que ficou melhor e o que o chefe aprovou); 4) O que deu errado: erros, entregas reprovadas e o motivo provável; 5) Pendências e sugestões do que fazer hoje.';
 
 async function apagar(caminho) {
   const r = await fetch(caminho, { method: 'DELETE' });
@@ -106,7 +107,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
       } }, rotulo);
       return el('li', { class: r.ativa ? '' : 'pausada' },
         el('div', { class: 'topo-rotina' }, el('b', {}, r.nome), el('span', { class: 'quando' }, `🗓 ${r.quando}`)),
-        el('div', { class: 'suave' }, `${r.para === 'auto' ? '🔮 Crânio decide' : `Para: ${nomeDe(r.para)}`}${r.cliente ? ` · cliente ${clientes.find((c) => c.id === r.cliente)?.nome || r.cliente}` : ''}`),
+        el('div', { class: 'suave' }, `${r.resumoOntem ? '☀ resumo de ontem · ' : ''}${r.para === 'auto' ? '🔮 Crânio decide' : `Para: ${nomeDe(r.para)}`}${r.cliente ? ` · cliente ${clientes.find((c) => c.id === r.cliente)?.nome || r.cliente}` : ''}`),
         el('div', { class: 'texto-rotina' }, r.texto),
         el('div', { class: 'suave' }, r.ultimoErro ? `⚠️ última vez falhou: ${r.ultimoErro}` : r.ultimaEm ? `Última vez: ${r.ultimaEm.split(' ').reverse().join(' de ')}` : 'Ainda não rodou'),
         el('div', { class: 'acoes-rotina' },
@@ -115,7 +116,19 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
           el('button', { type: 'button', class: 'secundario', onclick: () => { editando = r; desenharRotinas(); } }, 'Editar'),
           acao('Apagar', '', async () => { if (confirm(`Apagar a rotina "${r.nome}"?`)) await apagar(`api/rotinas/${r.id}`); }, 'perigo')));
     }) : [el('li', { class: 'vazio' }, 'Nenhuma rotina ainda. Crie a primeira ao lado.')];
-    corpo.replaceChildren(el('div', { class: 'cfg-grade rotinas' }, el('ul', { class: 'lista-rotinas' }, itens), formularioRotina(editando)),
+    // atalho: o resumo diário do que foi feito ontem, às 8h
+    const temResumo = rotinas.some((r) => r.resumoOntem);
+    const atalho = temResumo ? null : el('button', { type: 'button', class: 'atalho-resumo', onclick: async () => {
+      try {
+        const equipe = agentesVisiveis();
+        await api('api/rotinas', {
+          nome: 'Resumo de ontem', texto: TEXTO_RESUMO, resumoOntem: true, tipo: 'semanal', dias: [0, 1, 2, 3, 4, 5, 6], hora: '08:00',
+          para: equipe.includes('redator') ? 'redator' : 'auto',
+        });
+        await desenharRotinas();
+      } catch (erro) { alert(erro.message); }
+    } }, '☀ Criar "Resumo de ontem" todo dia às 8h');
+    corpo.replaceChildren(atalho || '', el('div', { class: 'cfg-grade rotinas' }, el('ul', { class: 'lista-rotinas' }, itens), formularioRotina(editando)),
       el('p', { class: 'suave' }, 'As entregas das rotinas aparecem no painel, em 📦 Entregas e no Telegram (se estiver conectado).'));
   }
 
@@ -139,6 +152,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
     const diaMes = el('input', { name: 'diaMes', type: 'number', min: 1, max: 28, value: r?.diaMes || 1 });
     const grupoMes = el('label', {}, el('span', {}, 'Dia do mês (1 a 28)'), diaMes);
     const hora = el('input', { name: 'hora', type: 'time', value: r?.hora || '08:00', required: true });
+    const resumoOntem = el('input', { type: 'checkbox', name: 'resumoOntem', checked: Boolean(r?.resumoOntem) });
     const mostrar = () => { grupoDias.hidden = tipo.value === 'mensal'; grupoMes.hidden = tipo.value !== 'mensal'; };
     tipo.addEventListener('change', mostrar);
     mostrar();
@@ -150,7 +164,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
         await api(r ? `api/rotinas/${r.id}` : 'api/rotinas', {
           nome: nome.value, texto: texto.value, para: para.value, cliente: cliente.value, tipo: tipo.value, hora: hora.value,
           diaMes: Number(diaMes.value), dias: dias.map((d) => d.querySelector('input')).filter((i) => i.checked).map((i) => Number(i.value)),
-          ativa: r ? r.ativa : true,
+          ativa: r ? r.ativa : true, resumoOntem: resumoOntem.checked,
         });
         editando = null;
         await desenharRotinas();
@@ -165,6 +179,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
       el('label', {}, el('span', {}, 'Repetir'), tipo),
       grupoDias, grupoMes,
       el('label', {}, el('span', {}, 'Horário (Brasília)'), hora),
+      el('label', { class: 'linha' }, resumoOntem, el('span', {}, 'Juntar tudo o que a equipe fez ontem (para resumos diários)')),
       el('div', { class: 'acoes' },
         el('button', { type: 'submit' }, r ? 'Salvar' : 'Criar rotina'),
         r ? el('button', { type: 'button', class: 'secundario', onclick: () => { editando = null; desenharRotinas(); } }, 'Cancelar') : null),
