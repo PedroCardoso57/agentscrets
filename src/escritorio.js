@@ -457,7 +457,7 @@ export function criarEstacao(agente) {
     for (let i = 0; i < 3; i++) g.add(caixa(0.24, 0.012, 0.32, mat('#f4f1ea'), 0.55, altura + 0.035 + i * 0.013, zCentro + 0.1).rotateY(i * 0.08));
   }
   // adereços por função (pelo id do agente)
-  if (agente.id === 'programador') {
+  if (['backend', 'frontend', 'programador'].includes(agente.id)) {
     // segundo monitor, virado de lado, com "código"
     const m2 = new THREE.Group();
     m2.position.set(0.62, altura + 0.02, zCentro + 0.12);
@@ -474,7 +474,7 @@ export function criarEstacao(agente) {
     m2.add(codigo);
     g.add(m2);
   }
-  if (agente.id === 'pesquisador') {
+  if (['requisitos', 'pesquisador'].includes(agente.id)) {
     const coresLivro = ['#e11d2a', '#3f3f46', '#fbbf24', '#60a5fa'];
     coresLivro.forEach((c, i) => g.add(caixa(0.3 - i * 0.02, 0.05, 0.22, mat(c), -0.62, altura + 0.05 + i * 0.05, zCentro - 0.02).rotateY((i - 1.5) * 0.12)));
   }
@@ -487,7 +487,7 @@ export function criarEstacao(agente) {
       g.add(lapis);
     });
   }
-  if (agente.id === 'revisor') {
+  if (['qa', 'revisor'].includes(agente.id)) {
     // carimbo de "aprovado"
     g.add(cilindro(0.035, 0.045, 0.05, mat('#e11d2a'), 0.5, altura + 0.05, zCentro - 0.25));
     g.add(cilindro(0.015, 0.015, 0.08, mat('#18181b'), 0.5, altura + 0.11, zCentro - 0.25));

@@ -134,5 +134,12 @@ export function criarRotinas({ dadosDir, disparar }) {
     relogio.unref?.();
   }
 
-  return { carregar, listar, salvar, remover, rodarAgora, iniciar, conferir };
+  // O time mudou de ids (ex.: redator → documentador): as rotinas acompanham.
+  async function renomearAgentes(mapa) {
+    let mudou = false;
+    for (const r of rotinas) if (mapa[r.para]) { r.para = mapa[r.para]; mudou = true; }
+    if (mudou) await gravar();
+  }
+
+  return { carregar, listar, salvar, remover, rodarAgora, iniciar, conferir, renomearAgentes };
 }

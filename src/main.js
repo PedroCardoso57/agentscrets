@@ -63,7 +63,7 @@ const efeitos = new Efeitos(cena);
 // pontos de onde saem e chegam as folhas de entrega
 const mesaDe = (id) => estacoes.get(id)?.grupo.localToWorld(new THREE.Vector3(0.35, MESA.altura + 0.12, MESA.zCentro - 0.1));
 const mesaDoChefe = () => chefe.grupo.localToWorld(new THREE.Vector3(-0.35, MESA.altura + 0.06, MESA.zCentro - 0.1));
-const REVISOR = 'revisor';
+const revisorDaCena = () => (estacoes.has('qa') ? 'qa' : 'revisor');
 
 // marca do .env no topo e na placa da parede
 ui.carregarMarca().then((m) => { if (m) definirMarcaSala(m.nome, m.cor); });
@@ -533,7 +533,8 @@ function aoOrdem(ordem, { nova }) {
     const origem = mesaDe(r.agente);
     if (!erro && origem && !cenaPausada) {
       const pontos = [origem];
-      if (r.revisao && !r.revisao.erro && r.agente !== REVISOR && estacoes.has(REVISOR)) pontos.push(mesaDe(REVISOR));
+      const rev = r.revisao?.por || revisorDaCena();
+      if (r.revisao && !r.revisao.erro && r.agente !== rev && estacoes.has(rev)) pontos.push(mesaDe(rev));
       pontos.push(mesaDoChefe());
       efeitos.entrega(pontos);
     }

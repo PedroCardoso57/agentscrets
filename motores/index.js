@@ -2,7 +2,7 @@
 // uma ordem para ele, conforme o motores.json (veja motores.exemplo.json).
 //
 //   {
-//     "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "...", "instrucoes": "..." },
+//     "backend":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "...", "instrucoes": "..." },
 //     "revisor":      { "provedor": "openai", "modelo": "...", "instrucoes": "..." },
 //     "orquestrador": { "provedor": "anthropic", "delegar": true, "instrucoes": "..." },
 //     "designer":     { "webhook": "https://seu-n8n/webhook/designer" }
@@ -15,13 +15,15 @@ import { readFileSync, existsSync } from 'node:fs';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PROVEDORES, chamarIA, NOMES, listarModelos } from './provedores.js';
+import { migrarConfiguracao, IDS_ANTIGOS } from './time-dev.js';
 
 const VOLTAR_AO_OCIOSO = 8000;
 
 const PROVEDORES_VALIDOS = Object.keys(PROVEDORES);
 const ESFORCOS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const COM_INTERNET = ['anthropic', 'gemini'];
-const REVISOR = process.env.REVISOR || 'revisor'; // quem revisa as entregas dos agentes com "revisar"
+// quem revisa as entregas dos agentes com "revisar": REVISOR no .env, senão o QA (ou o Revisor do time antigo)
+const revisorDe = (cfg) => process.env.REVISOR || (cfg.qa ? 'qa' : 'revisor');
 // chaves que a tela de configuração mostra como "configurada / falta"
 const CHAVES_CONHECIDAS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY', 'MISTRAL_API_KEY'];
 
@@ -69,7 +71,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   function instrucoesDe(id, c, cfg, podeDelegar, ordem) {
     let texto = c.instrucoes || `Você é o agente "${id}" de um escritório de IA${c.funcao ? `, responsável por: ${c.funcao}` : ''}. Cumpra a tarefa do chefe com qualidade e responda em português.`;
     const ficha = ordem?.cliente ? fichaCliente(ordem.cliente) : '';
-    if (ficha) texto += `\n\nEsta tarefa é para o cliente abaixo. Siga a ficha dele (tom de voz, público, o que evitar) em tudo o que entregar:\n\n${ficha}`;
+    if (ficha) texto += `\n\nEsta tarefa é do projeto do cliente abaixo. Siga a ficha (escopo, stack, integrações, regras de negócio e restrições) em tudo o que entregar:\n\n${ficha}`;
     if (c.internet) texto += '\n\nVocê pode pesquisar na internet: use a busca para trazer dados atuais e cite as fontes. Não invente números nem fontes.';
     if (podeDelegar) {
       const equipe = Object.entries(cfg).filter(([outro, o]) => outro !== id && !o.delegar)
@@ -94,6 +96,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   // O Revisor recebe a entrega e devolve a versão final + observações (na fila dele, uma por vez).
   const SEPARADOR_OBS = /^[ \t]*-{3,}[ \t]*OBSERVA[ÇC][ÕO]ES[ \t]*-{3,}[ \t]*$/im;
   function revisar(ordem, autor, rascunho) {
+    const REVISOR = revisorDe(configuracao());
     return naFila(REVISOR, async () => {
       const cfg = configuracao();
       const c = cfg[REVISOR];
@@ -114,7 +117,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     });
   }
 
-  const revisorDisponivel = (id, c, cfg) => c.revisar && id !== REVISOR && cfg[REVISOR] && cfg[REVISOR].provedor !== 'webhook';
+  const revisorDisponivel = (id, c, cfg) => { const rev = revisorDe(cfg); return c.revisar && id !== rev && cfg[rev] && cfg[rev].provedor !== 'webhook'; };
 
   function lerPlano(texto) {
     const limpo = texto.replace(/```(?:json)?/g, '');
@@ -225,6 +228,18 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   }
 
   // Descarta as mudanças feitas pela tela e volta a usar o motores.json do servidor.
+  // Uma vez só: converte a equipe antiga (agência de marketing) para o time de desenvolvimento,
+  // mantendo a IA escolhida para cada papel. Devolve o mapa de ids trocados (ou null).
+  async function migrarTimeDev() {
+    const novo = migrarConfiguracao(lerBruto());
+    if (!novo) return null;
+    await mkdir(dadosDir, { recursive: true });
+    await writeFile(`${arquivoEditado}.tmp`, JSON.stringify(novo, null, 2));
+    await rename(`${arquivoEditado}.tmp`, arquivoEditado);
+    console.log(`Equipe convertida para o time de desenvolvimento: ${Object.keys(novo).filter((k) => !k.startsWith('_')).join(', ')}`);
+    return IDS_ANTIGOS;
+  }
+
   async function restaurar() {
     await rm(arquivoEditado, { force: true });
     for (const [id, c] of Object.entries(configuracao())) registrarStatus({ id, motor: rotulo(c) });
@@ -272,8 +287,8 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
         registrarStatus({ id, status: 'concluido', tarefa: 'Entrega com o Revisor' });
         setTimeout(() => registrarStatus({ id, status: 'ocioso', tarefa: '' }), VOLTAR_AO_OCIOSO);
         revisar(ordem, id, resposta)
-          .then((r) => registrarResposta(ordem, id, r.texto, { ...m, revisao: { por: REVISOR, motor: r.motor, observacoes: r.observacoes.slice(0, 4000) } }))
-          .catch((erro) => registrarResposta(ordem, id, resposta, { ...m, revisao: { por: REVISOR, erro: erro.message.slice(0, 200) } }))
+          .then((r) => registrarResposta(ordem, id, r.texto, { ...m, revisao: { por: revisorDe(cfg), motor: r.motor, observacoes: r.observacoes.slice(0, 4000) } }))
+          .catch((erro) => registrarResposta(ordem, id, resposta, { ...m, revisao: { por: revisorDe(cfg), erro: erro.message.slice(0, 200) } }))
           .finally(() => atualizarOrdem(ordem));
         return;
       }
@@ -338,5 +353,5 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return configuracao();
   }
 
-  return { despachar, iniciar, listar, salvarAgente, removerAgente, testar, restaurar, equipe, modelos, naFila, rotulo };
+  return { despachar, iniciar, listar, salvarAgente, removerAgente, migrarTimeDev, testar, restaurar, equipe, modelos, naFila, rotulo };
 }

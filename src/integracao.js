@@ -1,13 +1,13 @@
 // Ponte entre o escritório e os seus motores/agentes reais.
 //
 // Formas de enviar status (todas usam o mesmo formato):
-//   { id: 'redator', status: 'trabalhando', tarefa: 'Escrevendo post do blog' }
+//   { id: 'backend', status: 'trabalhando', tarefa: 'Criando a API de clientes' }
 //
 // 1. Servidor local (recomendado): `node servidor.js` e os motores fazem
 //    POST http://localhost:8787/api/status com o JSON acima. A página recebe
 //    em tempo real via Server-Sent Events.
 // 2. WebSocket próprio: abra a página com ?ws=ws://host:porta
-// 3. JavaScript na mesma página: window.Escritorio.atualizar('redator', {...})
+// 3. JavaScript na mesma página: window.Escritorio.atualizar('backend', {...})
 // 4. iframe: parent.postMessage({ escritorio: {...} }, '*') para dentro do iframe
 // Sem nenhuma fonte conectada, roda uma simulação (modo demo).
 //
@@ -18,12 +18,14 @@
 import { STATUS } from './agentes.js';
 
 const TAREFAS_DEMO = {
-  orquestrador: ['Distribuindo tarefas da sprint', 'Revisando prioridades', 'Montando plano da semana'],
-  pesquisador: ['Lendo relatórios de mercado', 'Coletando referências', 'Pesquisando concorrentes'],
-  redator: ['Escrevendo legenda do post', 'Rascunhando e-mail', 'Criando roteiro de Reels'],
-  designer: ['Desenhando carrossel', 'Ajustando paleta de cores', 'Criando thumbnail'],
-  programador: ['Integrando API', 'Corrigindo bug na automação', 'Escrevendo testes'],
-  revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
+  orquestrador: ['Definindo a arquitetura do CRM', 'Quebrando o ERP em tarefas', 'Revisando prioridades da sprint'],
+  requisitos: ['Escrevendo histórias de usuário', 'Mapeando regras do financeiro', 'Levantando campos do cadastro'],
+  designer: ['Desenhando o dashboard', 'Criando o design system', 'Prototipando o checkout'],
+  frontend: ['Montando a landing page', 'Criando a tabela de pedidos', 'Deixando o site responsivo'],
+  backend: ['Criando a API de clientes', 'Modelando o banco de dados', 'Integrando o Pix'],
+  qa: ['Revisando o pull request', 'Escrevendo testes da API', 'Testando o login'],
+  devops: ['Subindo o Docker na VPS', 'Configurando HTTPS', 'Agendando backup do banco'],
+  documentador: ['Escrevendo o README', 'Documentando a API', 'Manual do usuário do ERP'],
 };
 
 export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {}, aoAviso = () => {} }) {

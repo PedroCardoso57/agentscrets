@@ -36,7 +36,7 @@
 
   <nav id="barra" aria-label="Menu">
     <button type="button" id="visao-geral" data-rotulo="Ver o escritório todo"><span aria-hidden="true">⌂</span></button>
-    <button type="button" id="abrir-clientes" data-rotulo="Clientes"><span aria-hidden="true">📇</span></button>
+    <button type="button" id="abrir-clientes" data-rotulo="Clientes e projetos"><span aria-hidden="true">📇</span></button>
     <button type="button" id="abrir-rotinas" data-rotulo="Rotinas"><span aria-hidden="true">🗓</span></button>
     <button type="button" id="abrir-entregas" data-rotulo="Entregas"><span aria-hidden="true">📦</span></button>
     <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><span aria-hidden="true">📄</span></button>
@@ -68,7 +68,7 @@
       <select id="destinatario" aria-label="Para quem é a ordem"></select>
     </label>
     <select id="cliente-ordem" aria-label="Para qual cliente" title="A ficha do cliente vai junto com a ordem" hidden><option value="">Sem cliente</option></select>
-    <input id="texto-ordem" type="text" maxlength="2000" placeholder="Dê uma ordem… (ex.: escreva 3 legendas para o post de segunda)" aria-label="Ordem" />
+    <input id="texto-ordem" type="text" maxlength="2000" placeholder="Dê uma ordem… (ex.: crie o módulo de clientes do CRM)" aria-label="Ordem" />
     <button type="submit">Enviar</button>
     <p id="aviso-ordem" role="status"></p>
   </form>
@@ -103,7 +103,7 @@
   </dialog>
 
   <dialog id="dlg-clientes" aria-labelledby="titulo-clientes">
-    <header><h2 id="titulo-clientes">Clientes · o que a equipe precisa saber de cada marca</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <header><h2 id="titulo-clientes">Clientes · o que a equipe precisa saber de cada projeto</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
     <div class="corpo"></div>
   </dialog>
 

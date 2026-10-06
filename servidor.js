@@ -13,17 +13,17 @@
 //   DADOS_DIR         pasta onde status e ordens são salvos (padrão ./dados)
 //   MOTORES_JSON      conteúdo do motores.json, para hospedagens sem arquivo local
 //   MOTORES_ARQUIVO   caminho do motores.json (padrão ./motores.json)
-//   DOCUMENTADOR      agente que mantém a documentação viva (padrão: redator); DOC_INTERVALO_MIN (padrão 3)
+//   DOCUMENTADOR      agente que mantém a documentação viva (padrão: documentador); DOC_INTERVALO_MIN (padrão 3)
 //   LAYA_URL          servidor do Laya, que decide o agente das ordens "Automático" (ex.: http://laya:8000)
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY   chaves das IAs dos motores embutidos
 //
 // Status (motor → escritório):
-//   POST /api/status                 {"id":"redator","status":"trabalhando","tarefa":"..."}
+//   POST /api/status                 {"id":"backend","status":"trabalhando","tarefa":"..."}
 //
 // Ordens (chefe → motor):
-//   POST /api/ordens                 {"para":"redator" | "todos","texto":"..."}      (a página usa)
+//   POST /api/ordens                 {"para":"backend" | "todos","texto":"..."}      (a página usa)
 //   GET  /api/ordens/pendentes?agente=redator   → ordens novas para o motor (marca como entregues)
-//   POST /api/ordens/:id/resposta    {"agente":"redator","texto":"Feito!","status":"concluido"}
+//   POST /api/ordens/:id/resposta    {"agente":"backend","texto":"Feito!","status":"concluido"}
 //   ou configure o agente em motores.json (veja motores.exemplo.json): o próprio
 //   servidor chama a IA dele (Claude, OpenAI, Gemini, API compatível) ou um webhook.
 
@@ -451,7 +451,7 @@ async function atender(req, res) {
   if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
   if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
 
-  // diagnóstico do Crânio: GET /api/decisor/teste?texto=escreva uma legenda
+  // diagnóstico do Crânio: GET /api/decisor/teste?texto=crie a tela de login
   if (rota === '/api/decisor/teste') {
     const texto = (url.searchParams.get('texto') || '').trim();
     if (!texto) return enviarJSON(res, 400, { erro: 'use ?texto=seu pedido' });
@@ -611,6 +611,11 @@ await carregar();
 await documentacao.carregar();
 await clientes.carregar();
 await rotinas.carregar();
+// time antigo (agência de marketing) → time de desenvolvimento, uma vez só
+const idsTrocados = await motores.migrarTimeDev();
+if (idsTrocados) await rotinas.renomearAgentes(idsTrocados);
+// agentes que saíram da equipe (tinham IA embutida) somem do escritório
+for (const [id, s] of estado) if (s.motor && !motores.equipe()[id]) estado.delete(id);
 rotinas.iniciar();
 await entregas.carregar(ordens);
 telegram.iniciar();

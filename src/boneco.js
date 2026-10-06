@@ -126,8 +126,9 @@ export class Boneco {
     this.criarAderecos(agente.atividade);
   }
 
-  // Acessórios por função: fone no Designer, óculos no Revisor e no Pesquisador,
-  // gorro no Programador, crachá no Orquestrador, lápis na orelha do Redator.
+  // Acessórios por função: fone no Designer, óculos no QA e no Analista de requisitos,
+  // gorro no Back-end, boné no Front-end, capacete no DevOps, crachá no Tech Lead,
+  // lápis na orelha do Documentador.
   criarAcessorios(id) {
     const preto = mat('#18181b', { roughness: 0.4 });
     if (id === 'designer') {
@@ -141,8 +142,8 @@ export class Boneco {
         this.pescoco.add(concha);
       }
     }
-    if (id === 'revisor' || id === 'pesquisador') {
-      const armacao = id === 'revisor' ? preto : mat('#c9a14a', { metalness: 0.7, roughness: 0.3 });
+    if (['qa', 'revisor', 'requisitos', 'pesquisador'].includes(id)) {
+      const armacao = ['qa', 'revisor'].includes(id) ? preto : mat('#c9a14a', { metalness: 0.7, roughness: 0.3 });
       for (const lado of [-1, 1]) {
         const lente = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.007, 6, 16), armacao);
         lente.position.set(lado * 0.06, 0.18, 0.165);
@@ -152,7 +153,7 @@ export class Boneco {
       ponte.position.set(0, 0.185, 0.168);
       this.pescoco.add(ponte);
     }
-    if (id === 'programador') {
+    if (['backend', 'programador'].includes(id)) {
       const gorro = new THREE.Mesh(new THREE.SphereGeometry(0.185, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), mat('#27272a', { roughness: 1 }));
       gorro.position.set(0, 0.2, -0.01);
       gorro.rotation.x = -0.25;
@@ -170,7 +171,26 @@ export class Boneco {
       faixa.position.set(0.07, 0.42, 0.147);
       this.tronco.add(faixa);
     }
-    if (id === 'redator') {
+    if (id === 'frontend') {
+      // boné virado para trás
+      const bone = new THREE.Mesh(new THREE.SphereGeometry(0.182, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), mat('#0f172a', { roughness: 0.9 }));
+      bone.position.set(0, 0.2, 0);
+      this.pescoco.add(bone);
+      const aba = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.015, 0.12), mat('#2ec4d6', { roughness: 0.9 }));
+      aba.position.set(0, 0.25, -0.2);
+      aba.rotation.x = -0.25;
+      this.pescoco.add(aba);
+    }
+    if (id === 'devops') {
+      // capacete de obra: quem cuida da infraestrutura
+      const capacete = new THREE.Mesh(new THREE.SphereGeometry(0.19, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), mat('#fbbf24', { roughness: 0.5 }));
+      capacete.position.set(0, 0.19, 0);
+      this.pescoco.add(capacete);
+      const aba = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.012, 24), mat('#fbbf24', { roughness: 0.5 }));
+      aba.position.set(0, 0.2, 0.02);
+      this.pescoco.add(aba);
+    }
+    if (['documentador', 'redator'].includes(id)) {
       const lapis = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.16, 6), mat('#fbbf24'));
       lapis.rotation.z = Math.PI / 2 - 0.3;
       lapis.position.set(-0.17, 0.2, 0.02);

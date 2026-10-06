@@ -1,19 +1,19 @@
-// Fichas de clientes: o que os agentes precisam saber da marca para acertar de
-// primeira (tom de voz, público, produtos, o que evitar). Ficam em
+// Fichas de clientes: o que os agentes precisam saber do projeto para acertar de
+// primeira (escopo, usuários, stack, integrações, regras de negócio). Ficam em
 // DADOS_DIR/clientes.json e vão junto nas instruções de toda ordem do cliente.
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export const CAMPOS_CLIENTE = {
-  nome: { rotulo: 'Nome', max: 80 },
-  nicho: { rotulo: 'Nicho / segmento', max: 200 },
-  publico: { rotulo: 'Público', max: 1000 },
-  tom: { rotulo: 'Tom de voz', max: 1000 },
-  produtos: { rotulo: 'Produtos e serviços', max: 2000 },
-  evitar: { rotulo: 'O que evitar', max: 1000 },
-  exemplos: { rotulo: 'Exemplos que deram certo', max: 4000 },
-  observacoes: { rotulo: 'Outras informações', max: 2000 },
+  nome: { rotulo: 'Cliente', max: 80 },
+  nicho: { rotulo: 'Segmento', max: 200 },
+  produtos: { rotulo: 'Escopo e módulos', max: 2000 },
+  publico: { rotulo: 'Usuários do sistema', max: 1000 },
+  tom: { rotulo: 'Stack e padrões técnicos', max: 1000 },
+  observacoes: { rotulo: 'Integrações e infraestrutura', max: 2000 },
+  evitar: { rotulo: 'Regras de negócio e restrições', max: 1000 },
+  exemplos: { rotulo: 'Referências', max: 4000 },
 };
 
 export function slugCliente(texto) {

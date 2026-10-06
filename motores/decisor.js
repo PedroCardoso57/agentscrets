@@ -7,7 +7,7 @@
 // Fala o protocolo do servidor oficial `laya-serve`: POST /v1/systemone.
 
 const URGENCIAS = ['pode esperar', 'esta semana', 'hoje', 'urgente, agora'];
-const DESCRICAO_ORQUESTRADOR = 'pedidos grandes, campanhas, projetos ou planos que precisam de vários especialistas trabalhando juntos';
+const DESCRICAO_ORQUESTRADOR = 'projetos completos, sistemas inteiros (ERP, CRM, sites) ou pedidos grandes que precisam de vários especialistas trabalhando juntos';
 
 export function criarDecisor() {
   const url = () => (process.env.LAYA_URL || '').replace(/\/$/, '');

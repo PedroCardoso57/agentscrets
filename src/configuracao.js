@@ -111,8 +111,8 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
     const reserva = el('select', { name: 'reserva' }, el('option', { value: '' }, 'Nenhuma'),
       Object.entries(estado.agentes).filter(([outro, o]) => outro !== id && o.provedor !== 'webhook')
         .map(([outro]) => el('option', { value: outro, selected: atual.reserva === outro }, `IA do ${nomeDe(outro)} (${estado.rotulos[outro]})`)));
-    const funcao = el('input', { name: 'funcao', value: atual.funcao || '', placeholder: 'ex.: Escreve legendas e roteiros' });
-    const instrucoes = el('textarea', { name: 'instrucoes', rows: 7, placeholder: 'Você é o … da agência. …' }, atual.instrucoes || '');
+    const funcao = el('input', { name: 'funcao', value: atual.funcao || '', placeholder: 'ex.: Cria APIs, banco de dados e integrações' });
+    const instrucoes = el('textarea', { name: 'instrucoes', rows: 7, placeholder: 'Você é o … da software house. …' }, atual.instrucoes || '');
     const statusChave = el('p', { class: 'chave' });
     // lista completa de modelos, buscada no provedor com a chave do servidor
     const listaModelos = el('select', { class: 'lista-modelos', hidden: true, onchange: () => { if (listaModelos.value) modelo.value = listaModelos.value; } });
@@ -230,7 +230,7 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       campo('Função (o Orquestrador lê isto para decidir a quem passar cada tarefa)', funcao),
       campo('Instruções (o papel e o jeito de trabalhar deste agente)', instrucoes),
       el('label', { class: 'linha' }, delegar, el('span', {}, 'Pode delegar tarefas para a equipe (Orquestrador)')),
-      id !== 'revisor' ? el('label', { class: 'linha' }, revisar, el('span', {}, 'Entregas passam pelo Revisor antes de chegar em você')) : null,
+      !['qa', 'revisor'].includes(id) ? el('label', { class: 'linha' }, revisar, el('span', {}, 'Entregas passam pelo QA (revisão) antes de chegar em você')) : null,
       linhaInternet,
       el('div', { class: 'acoes' },
         el('button', { type: 'button', class: 'secundario', onclick: testar }, 'Testar'),

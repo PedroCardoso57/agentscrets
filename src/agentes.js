@@ -10,12 +10,14 @@
 //   quadro    → levanta e escreve no quadro branco (planejamento, orquestração)
 
 export const AGENTES = [
-  { id: 'orquestrador', nome: 'Orquestrador', funcao: 'Planeja e distribui tarefas', atividade: 'quadro',   cor: '#e5484d', cabelo: '#2b1d14', pele: '#f1c27d' },
-  { id: 'pesquisador',  nome: 'Pesquisador',  funcao: 'Pesquisa e coleta dados',      atividade: 'ler',      cor: '#4c8dff', cabelo: '#111111', pele: '#c68642' },
-  { id: 'redator',      nome: 'Redator',      funcao: 'Escreve conteúdos',            atividade: 'digitar',  cor: '#3fb27f', cabelo: '#a0522d', pele: '#ffdbac' },
-  { id: 'designer',     nome: 'Designer',     funcao: 'Cria peças visuais',           atividade: 'desenhar', cor: '#b05cf0', cabelo: '#e8b04a', pele: '#f1c27d' },
-  { id: 'programador',  nome: 'Programador',  funcao: 'Automatiza e integra',         atividade: 'digitar',  cor: '#2ec4d6', cabelo: '#1a1a1a', pele: '#e0ac69' },
-  { id: 'revisor',      nome: 'Revisor',      funcao: 'Revisa e aprova entregas',     atividade: 'ler',      cor: '#8e99ad', cabelo: '#9a9a9a', pele: '#c68642' },
+  { id: 'orquestrador', nome: 'Tech Lead',     funcao: 'Arquitetura e distribuição das tarefas', atividade: 'quadro',   cor: '#e5484d', cabelo: '#2b1d14', pele: '#f1c27d' },
+  { id: 'requisitos',   nome: 'Requisitos',    funcao: 'Regras de negócio e histórias de usuário', atividade: 'ler',    cor: '#4c8dff', cabelo: '#111111', pele: '#c68642' },
+  { id: 'designer',     nome: 'Designer UI/UX', funcao: 'Telas, fluxos e design system',        atividade: 'desenhar', cor: '#b05cf0', cabelo: '#e8b04a', pele: '#f1c27d' },
+  { id: 'frontend',     nome: 'Front-end',     funcao: 'Sites e telas (HTML, CSS, React)',       atividade: 'digitar',  cor: '#2ec4d6', cabelo: '#5a3825', pele: '#ffdbac' },
+  { id: 'backend',      nome: 'Back-end',      funcao: 'APIs, banco de dados e integrações',     atividade: 'digitar',  cor: '#3fb27f', cabelo: '#1a1a1a', pele: '#e0ac69' },
+  { id: 'qa',           nome: 'QA',            funcao: 'Testes, code review e segurança',        atividade: 'analisar', cor: '#8e99ad', cabelo: '#9a9a9a', pele: '#c68642' },
+  { id: 'devops',       nome: 'DevOps',        funcao: 'Deploy, Docker, VPS e backups',          atividade: 'analisar', cor: '#f07a3a', cabelo: '#3b2a20', pele: '#8d5524' },
+  { id: 'documentador', nome: 'Documentador',  funcao: 'Documentação técnica e manuais',         atividade: 'digitar',  cor: '#e0b23c', cabelo: '#a0522d', pele: '#ffdbac' },
 ];
 
 // Você! O seu bonequinho fica na mesa do chefe e leva as ordens até a equipe.

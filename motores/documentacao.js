@@ -3,7 +3,7 @@
 // avaliações) e, de tempos em tempos, o documentador reescreve o documento
 // incorporando o que aconteceu. Fica em DADOS_DIR/documentacao.md.
 //
-//   DOCUMENTADOR=redator        agente responsável (precisa estar no motores.json)
+//   DOCUMENTADOR=documentador   agente responsável (precisa estar no motores.json)
 //   DOC_INTERVALO_MIN=3         de quantos em quantos minutos atualiza, se houver novidades
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
@@ -43,7 +43,8 @@ export function criarDocumentacao({ dadosDir, equipe, rotulo, naFila, registrarS
   let rodando = false;
   let ultimaRodada = 0;
 
-  const documentador = () => process.env.DOCUMENTADOR || 'redator';
+  // quem mantém a documentação: DOCUMENTADOR no .env, senão o Documentador (ou o Redator do time antigo)
+  const documentador = () => process.env.DOCUMENTADOR || (equipe().documentador ? 'documentador' : 'redator');
   const intervaloMs = () => Math.max(1, Number(process.env.DOC_INTERVALO_MIN || 3)) * 60000;
 
   async function carregar() {

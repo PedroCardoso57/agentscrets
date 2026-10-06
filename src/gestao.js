@@ -5,13 +5,13 @@ import { api, el } from './configuracao.js';
 
 const CAMPOS = [
   ['nome', 'Nome', 'input', 'Ex.: Padaria do Zé'],
-  ['nicho', 'Nicho / segmento', 'input', 'Ex.: padaria artesanal de bairro'],
-  ['publico', 'Público', 'textarea', 'Quem compra, idade, região, o que valoriza'],
-  ['tom', 'Tom de voz', 'textarea', 'Ex.: acolhedor, com humor leve, sem gírias'],
-  ['produtos', 'Produtos e serviços', 'textarea', 'Carro-chefe, preços se puder citar, diferenciais'],
-  ['evitar', 'O que evitar', 'textarea', 'Ex.: não falar de concorrentes, não prometer entrega'],
-  ['exemplos', 'Exemplos que deram certo', 'textarea', 'Cole posts ou textos que funcionaram'],
-  ['observacoes', 'Outras informações', 'textarea', 'Datas importantes, @ das redes, site…'],
+  ['nicho', 'Segmento', 'input', 'Ex.: varejo de alimentos, 3 lojas'],
+  ['produtos', 'Escopo e módulos', 'textarea', 'O que vamos construir: ERP (estoque, vendas, financeiro), CRM, site institucional…'],
+  ['publico', 'Usuários do sistema', 'textarea', 'Quem usa: vendedores, gerente, financeiro, clientes no site… e quantos'],
+  ['tom', 'Stack e padrões técnicos', 'textarea', 'Ex.: React + Node + PostgreSQL, hospedagem na VPS, padrões de código'],
+  ['observacoes', 'Integrações e infraestrutura', 'textarea', 'Ex.: nota fiscal, pagamento (Pix), WhatsApp, sistema atual, domínio, servidor'],
+  ['evitar', 'Regras de negócio e restrições', 'textarea', 'Regras importantes, LGPD, o que não pode, prazos e orçamento'],
+  ['exemplos', 'Referências', 'textarea', 'Sistemas ou sites parecidos, links, repositório do projeto'],
 ];
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const TEXTO_RESUMO = 'Escreva o resumo completo do que a equipe fez ontem, usando só o material anexo (não invente nada). Organize em: 1) Visão geral com os números do dia; 2) O que foi entregue, agrupado por cliente (e o que foi interno), com uma linha sobre cada entrega; 3) Destaques (o que ficou melhor e o que o chefe aprovou); 4) O que deu errado: erros, entregas reprovadas e o motivo provável; 5) Pendências e sugestões do que fazer hoje.';
@@ -123,7 +123,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
         const equipe = agentesVisiveis();
         await api('api/rotinas', {
           nome: 'Resumo de ontem', texto: TEXTO_RESUMO, resumoOntem: true, tipo: 'semanal', dias: [0, 1, 2, 3, 4, 5, 6], hora: '08:00',
-          para: equipe.includes('redator') ? 'redator' : 'auto',
+          para: ['documentador', 'redator'].find((x) => equipe.includes(x)) || 'auto',
         });
         await desenharRotinas();
       } catch (erro) { alert(erro.message); }
@@ -136,7 +136,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
     const f = el('form', { class: 'cfg-form' });
     const resultado = el('p', { class: 'resultado', role: 'status' });
     const nome = el('input', { name: 'nome', value: r?.nome || '', placeholder: 'Ex.: Grade da semana', maxlength: 80 });
-    const texto = el('textarea', { name: 'texto', rows: 3, placeholder: 'Ex.: monte a grade de posts da semana com 5 ideias e legendas' });
+    const texto = el('textarea', { name: 'texto', rows: 3, placeholder: 'Ex.: revise o que foi entregue ontem no CRM e liste os bugs abertos' });
     texto.value = r?.texto || '';
     const para = el('select', { name: 'para' },
       el('option', { value: 'auto', selected: !r || r.para === 'auto' }, '🔮 Crânio decide (ou o Orquestrador)'),
