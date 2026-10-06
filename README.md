@@ -203,11 +203,13 @@ O Laya decide melhor quanto mais clara for a **função** de cada agente (em ⚙
 
 ## Documentação viva (mantida pelo Documentador)
 
-O botão **📄 Documentação** abre o documento do projeto, que o **Documentador** mantém atualizado sozinho. O escritório anota cada novidade (ordens entregues, decisões do Crânio e do Orquestrador, trocas de IA na equipe, suas avaliações) e, a cada poucos minutos, se houver novidades, o Redator reescreve o documento com a IA dele. Enquanto isso, o bonequinho dele aparece "Atualizando a documentação".
+O botão **📄 Documentação** abre os documentos que o **Documentador** mantém atualizados sozinho, **um por projeto**:
 
-- Seções: Visão geral, Equipe e IAs, Decisões, Entregas recentes, Pendências e próximos passos, Histórico.
-- A janela atualiza na hora quando ele termina (uma bolinha verde no botão avisa que há novidades); **Atualizar agora** força uma rodada e **Baixar .md** salva o arquivo.
-- Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
+- **Cada cliente tem a sua documentação**, com visão geral, escopo e módulos, arquitetura e stack, regras de negócio, decisões, entregas, pendências e histórico. Ela parte da ficha do cliente e só recebe o que é daquele projeto. Escolha o projeto no seletor da janela.
+- **O documento Geral** cobre o escritório: a equipe e as IAs, a lista de projetos e os trabalhos que não são de nenhum cliente (ex.: "configure o backup do servidor").
+- **Como o escritório sabe de qual projeto é cada coisa:** pelo cliente escolhido na barra de ordens ou, se você não escolher, **reconhecendo pelo texto do pedido**. Vale o nome do cliente, o id ou os **apelidos** cadastrados na ficha ("ERP da padaria, PDV do Zé"), e também uma palavra que só aparece no nome de um cliente. O cartão mostra "👤 Padaria do Zé (reconhecido no pedido)". Pedidos que citam dois projetos ou nenhum ficam no Geral. As tarefas que o Tech Lead distribui, os ajustes e a entrega final herdam o projeto da ordem original.
+- O escritório anota as novidades (entregas, decisões do Crânio, avaliações, fichas) e, a cada poucos minutos, o Documentador reescreve só os documentos que tiveram novidade. **Atualizar agora** força o projeto aberto e **Baixar .md** salva o arquivo dele.
+- Os arquivos ficam em `dados/documentacao.md` (Geral) e `dados/documentacao/<cliente>.md`, cada um com a versão anterior em `.anterior`. Quem já tinha a documentação de antes encontra o conteúdo no Geral.
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=documentador` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
 ## Visual e marca

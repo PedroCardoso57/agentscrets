@@ -372,7 +372,7 @@ function renderizarOrdens() {
     li.querySelector('.texto').textContent = o.texto;
     // de onde veio a ordem: cliente, ajuste de uma entrega, rotina agendada, Telegram
     const marcas = [
-      o.cliente ? `👤 ${nomeCliente(o.cliente)}` : null,
+      o.cliente ? `👤 ${nomeCliente(o.cliente)}${o.clienteReconhecido ? ' (reconhecido no pedido)' : ''}` : null,
       o.ajuste ? '↩ ajuste' : null,
       o.consolidacao ? '🏁 entrega final' : null,
       o.texto.startsWith('Replanejar:') ? '🔀 replanejamento' : null,

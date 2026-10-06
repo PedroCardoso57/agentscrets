@@ -5,6 +5,7 @@ import { api, el } from './configuracao.js';
 
 const CAMPOS = [
   ['nome', 'Nome', 'input', 'Ex.: Padaria do Zé'],
+  ['apelidos', 'Como o projeto aparece nos seus pedidos', 'input', 'Ex.: ERP da padaria, sistema do Zé, PDV Zé (separe por vírgula)'],
   ['nicho', 'Segmento', 'input', 'Ex.: varejo de alimentos, 3 lojas'],
   ['produtos', 'Escopo e módulos', 'textarea', 'O que vamos construir: ERP (estoque, vendas, financeiro), CRM, site institucional…'],
   ['publico', 'Usuários do sistema', 'textarea', 'Quem usa: vendedores, gerente, financeiro, clientes no site… e quantos'],
@@ -54,7 +55,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
       clientes.map((c) => el('li', { class: c.id === selecionado ? 'ativo' : '', onclick: () => { selecionado = c.id; desenharClientes(); } },
         el('b', {}, c.nome), el('small', {}, `#${c.id}${c.nicho ? ` · ${c.nicho}` : ''}`))));
     corpo.replaceChildren(el('div', { class: 'cfg-grade' }, lista, formularioCliente(clientes.find((c) => c.id === selecionado))),
-      el('p', { class: 'suave' }, 'A ficha vai junto com toda ordem do cliente: escolha o cliente na barra de ordens ou, no Telegram, comece com #id.'));
+      el('p', { class: 'suave' }, 'A ficha vai junto com toda ordem do cliente e cada cliente tem a sua documentação. Escolha o cliente na barra de ordens ou só cite o projeto no pedido (pelo nome ou pelos apelidos) que o escritório reconhece. No Telegram também dá para começar com #id.'));
   }
 
   function formularioCliente(c) {

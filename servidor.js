@@ -173,7 +173,7 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
   // vira arquivo .md no arquivo de entregas
   entregas.registrar(ordem, ordem.respostas.length - 1).catch((erro) => console.error('[entregas]', erro.message));
   // vira evento da documentação viva (o trecho basta para o documentador resumir)
-  documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`);
+  documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`, ordem.cliente);
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
@@ -188,7 +188,7 @@ function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, clie
   if (consolidacao) ordem.consolidacao = consolidacao; // entrega final que junta o plano da ordem indicada
   if (decisao) {
     ordem.decisao = decisao; // como o Crânio (Laya) decidiu, com que certeza e urgência
-    documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`);
+    documentacao?.registrar(`Crânio: ${descreverDecisao(decisao, ordem)}`, ordem.cliente);
   }
   ordens.push(ordem);
   if (ordens.length > MAX_ORDENS) ordens.shift();
@@ -228,11 +228,15 @@ async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente
 async function ordemDoChefe({ para, texto, origem, cliente, anexo }) {
   texto = texto.slice(0, 2000);
   if (cliente && !clientes.existe(cliente)) throw new Error(`cliente "${cliente}" não cadastrado`);
+  // sem cliente escolhido: reconhece pelo texto do pedido (nome, apelidos do projeto…)
+  let reconhecido = false;
+  if (!cliente) { cliente = clientes.detectar(texto) || ''; reconhecido = Boolean(cliente); }
   // "auto" sem o Laya: vai para o Orquestrador (ou para todos, se não houver)
   if (para === 'auto' && !decisor.ativo()) para = motores.equipe().orquestrador ? 'orquestrador' : 'todos';
-  if (para !== 'auto') return encaminhar({ para, texto, origem, cliente, anexo });
+  const marcar = (ordem) => { if (reconhecido && ordem.cliente) { ordem.clienteReconhecido = true; transmitir('ordem', ordem); } return ordem; };
+  if (para !== 'auto') return marcar(await encaminhar({ para, texto, origem, cliente, anexo }));
   const decisao = await decisor.decidir(texto, motores.equipe());
-  return criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente, anexo });
+  return marcar(criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente, anexo }));
 }
 
 // Ajuste: o mesmo agente refaz uma entrega dele, vendo o pedido original e o que entregou.
@@ -320,6 +324,13 @@ documentacao = criarDocumentacao({
   naFila: (id, trabalho) => motores.naFila(id, trabalho),
   registrarStatus,
   transmitir: (evento, dados) => transmitirSemSalvar(evento, dados),
+  // cada cliente cadastrado tem a sua documentação separada
+  projetos: {
+    existe: (id) => clientes.existe(id),
+    nomeDe: (id) => clientes.nomeDe(id),
+    ficha: (id) => clientes.ficha(id),
+    listar: () => clientes.listar(),
+  },
 });
 
 // ---------- rotas ----------
@@ -412,7 +423,8 @@ async function atender(req, res) {
     try {
       if (req.method === 'DELETE') { await clientes.remover(cliente[1]); transmitirSemSalvar('clientes', clientes.listar()); return enviarJSON(res, 200, clientes.listar()); }
       const salvo = await clientes.salvar(cliente[1], await lerCorpo(req));
-      documentacao.registrar(`Clientes: ficha de ${salvo.nome} ${cliente[1] ? 'atualizada' : 'criada'}`);
+      documentacao.registrar(`Ficha do cliente ${cliente[1] ? 'atualizada' : 'criada'}: ${clientes.ficha(salvo.id).slice(0, 2000)}`, salvo.id);
+      documentacao.registrar(`Clientes: projeto ${salvo.nome} ${cliente[1] ? 'atualizado' : 'cadastrado'}`);
       transmitirSemSalvar('clientes', clientes.listar());
       return enviarJSON(res, 200, salvo);
     } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
@@ -448,8 +460,9 @@ async function atender(req, res) {
     return res.end(texto);
   }
 
-  if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
-  if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
+  // documentação: ?projeto=<id do cliente> (sem projeto = geral)
+  if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo(url.searchParams.get('projeto') || 'geral'));
+  if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true, projeto: url.searchParams.get('projeto') || 'geral' }));
 
   // diagnóstico do Crânio: GET /api/decisor/teste?texto=crie a tela de login
   if (rota === '/api/decisor/teste') {
@@ -531,7 +544,7 @@ async function atender(req, res) {
     if (![1, -1, 0].includes(dados.nota)) return enviarJSON(res, 400, { erro: 'nota deve ser 1 (bom), -1 (ruim) ou 0 (limpar)' });
     if (dados.nota === 0) { delete resp.nota; delete resp.comentario; } else {
       resp.nota = dados.nota;
-      documentacao.registrar(`Avaliação do chefe: ${dados.nota === 1 ? '👍 boa' : '👎 ruim'} para a resposta de ${resp.agente} em "${ordem.texto.slice(0, 150)}"${typeof dados.comentario === 'string' && dados.comentario.trim() ? ` — comentário: ${dados.comentario.trim().slice(0, 300)}` : ''}`);
+      documentacao.registrar(`Avaliação do chefe: ${dados.nota === 1 ? '👍 boa' : '👎 ruim'} para a resposta de ${resp.agente} em "${ordem.texto.slice(0, 150)}"${typeof dados.comentario === 'string' && dados.comentario.trim() ? ` — comentário: ${dados.comentario.trim().slice(0, 300)}` : ''}`, ordem.cliente);
       resp.comentario = typeof dados.comentario === 'string' ? dados.comentario.trim().slice(0, 500) : resp.comentario;
       if (!resp.comentario) delete resp.comentario;
     }
@@ -608,8 +621,8 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 }
 
 await carregar();
+await clientes.carregar(); // antes da documentação: cada cliente tem o seu documento
 await documentacao.carregar();
-await clientes.carregar();
 await rotinas.carregar();
 // time antigo (agência de marketing) → time de desenvolvimento, uma vez só
 const idsTrocados = await motores.migrarTimeDev();
