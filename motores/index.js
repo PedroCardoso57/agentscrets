@@ -28,7 +28,8 @@ const revisorDe = (cfg) => process.env.REVISOR || (cfg.qa ? 'qa' : 'revisor');
 const CHAVES_CONHECIDAS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY', 'MISTRAL_API_KEY'];
 
 // fichaCliente(id) → texto da ficha do cliente (tom, público, o que evitar…) ou ''
-export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem, fichaCliente = () => '' }) {
+// contextoCodigo(cliente) → texto com o repositório do projeto e a regra de entregar arquivos (ou '')
+export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem, fichaCliente = () => '', contextoCodigo = async () => '' }) {
   const arquivo = process.env.MOTORES_ARQUIVO || join(raiz, 'motores.json');
   // o que você muda pela tela fica na pasta de dados (o motores.json original vira só o ponto de partida)
   const arquivoEditado = join(dadosDir, 'motores.json');
@@ -68,10 +69,11 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return (c.modelo ? `${nome} · ${c.modelo}` : nome) + (c.reservaDe ? ' (reserva)' : '');
   }
 
-  function instrucoesDe(id, c, cfg, podeDelegar, ordem) {
+  function instrucoesDe(id, c, cfg, podeDelegar, ordem, codigo = '') {
     let texto = c.instrucoes || `Você é o agente "${id}" de um escritório de IA${c.funcao ? `, responsável por: ${c.funcao}` : ''}. Cumpra a tarefa do chefe com qualidade e responda em português.`;
     const ficha = ordem?.cliente ? fichaCliente(ordem.cliente) : '';
     if (ficha) texto += `\n\nEsta tarefa é do projeto do cliente abaixo. Siga a ficha (escopo, stack, integrações, regras de negócio e restrições) em tudo o que entregar:\n\n${ficha}`;
+    if (codigo && !podeDelegar) texto += `\n\n${codigo}`;
     if (c.internet) texto += '\n\nVocê pode pesquisar na internet: use a busca para trazer dados atuais e cite as fontes. Não invente números nem fontes.';
     if (podeDelegar) {
       const equipe = Object.entries(cfg).filter(([outro, o]) => outro !== id && !o.delegar)
@@ -264,7 +266,8 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     let usado = c; // muda se a IA reserva precisar entrar
     const meta = () => ({ motor: rotulo(usado), ms: Date.now() - inicio }); // para o relatório comparar IAs
     try {
-      const chamada = await chamarIA(c, { instrucoes: instrucoesDe(id, c, cfg, podeDelegar, ordem), pedido: pedidoDe(ordem), ordem, agente: id }, {
+      const codigo = ordem.cliente ? await contextoCodigo(ordem.cliente).catch(() => '') : '';
+      const chamada = await chamarIA(c, { instrucoes: instrucoesDe(id, c, cfg, podeDelegar, ordem, codigo), pedido: pedidoDe(ordem), ordem, agente: id }, {
         cfg, aoEsperar: (tarefa) => registrarStatus({ id, status: 'aguardando', tarefa }),
       });
       usado = chamada.usado;

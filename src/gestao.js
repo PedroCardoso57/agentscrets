@@ -63,6 +63,7 @@ export function criarGestao({ servidorAtivo, nomeDe, agentesVisiveis, aoMudarCli
     const campos = {};
     const resultado = el('p', { class: 'resultado', role: 'status' });
     f.append(el('h3', {}, c ? c.nome : 'Novo cliente'));
+    if (c?.repo) f.append(el('p', { class: 'suave' }, 'Repositório: ', el('a', { href: c.repo, target: '_blank', rel: 'noopener' }, c.repo.replace('https://github.com/', ''))));
     for (const [nome, rotulo, tipo, dica] of CAMPOS) {
       const input = tipo === 'input'
         ? el('input', { name: nome, value: c?.[nome] || '', placeholder: dica, maxlength: nome === 'nome' ? 80 : 200 })

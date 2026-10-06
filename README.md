@@ -282,6 +282,20 @@ As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente resp
 
 Para gastar menos cota: espalhe os agentes por provedores diferentes, use a revisão do QA só onde vale a pena e aumente `DOC_INTERVALO_MIN` (a documentação viva também chama a IA do Redator).
 
+## GitHub: cada projeto vira um repositório (código, PRs e testes)
+
+Com `GITHUB_TOKEN` no `.env`, o código que o time escreve deixa de ser só texto no chat:
+
+1. **Repositório por projeto.** O primeiro código de um cliente cria um repositório privado (`GITHUB_DONO`/`GITHUB_PREFIXO` + id do cliente), já com o CI em `.github/workflows/ci.yml`.
+2. **Entrega vira PR.** Os agentes escrevem os arquivos em blocos ```` ```ts arquivo: src/caminho.ts ````. Cada entrega com arquivos vira um commit numa branch `agentes/<agente>-<ordem>` e um pull request. Os agentes recebem a árvore atual do repositório, para continuar o que já existe.
+3. **Testes no GitHub Actions.** O CI instala, compila e roda os testes (Node e Python). Nada do código gerado roda no seu VPS.
+4. **Correção automática.** Se o CI falhar, o agente recebe o log do erro e corrige no mesmo PR (até 3 vezes). Depois disso, você é avisado.
+5. **Merge automático.** Com o CI verde, o PR é mesclado (squash) e a branch apagada. Com `GITHUB_AUTO_MERGE=0`, ele fica aprovado esperando você.
+
+O cartão da entrega mostra o link do PR e o estado (testando, corrigindo, mesclado…), a ficha do cliente mostra o link do repositório e o Telegram avisa quando um PR abre e quando é mesclado.
+
+**Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write), mais **Actions** e **Commit statuses** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
+
 ## Entregas: tudo o que a equipe já produziu
 
 O botão **📦 Entregas** abre o arquivo de tudo o que os agentes responderam, da mais nova para a mais antiga: busca por texto (no pedido ou na entrega), filtro por agente, leitura formatada, **Copiar texto**, **Baixar .md** de cada uma e **Baixar todas** (junta num só arquivo o que estiver filtrado).
@@ -429,6 +443,7 @@ src/configuracao.js     janelas Equipe (trocar IA) e Relatório
 src/cranio.js           a bola de cristal do Crânio (Laya) e a animação das decisões
 src/documentacao.js     janela da documentação viva
 motores/documentacao.js o Documentador mantendo a documentação do projeto
+motores/repositorios.js um repositório no GitHub por projeto: commits, PRs, CI, correção e merge
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

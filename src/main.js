@@ -465,6 +465,17 @@ function renderizarOrdens() {
       } else if (r.revisao?.erro) {
         resp.appendChild(Object.assign(document.createElement('div'), { className: 'obs-revisor', textContent: `⚠️ sem revisão: ${r.revisao.erro}` }));
       }
+      // código no GitHub: PR e estado do CI
+      if (r.repo) {
+        const ESTADO_PR = { testando: '⏳ testando no CI', corrigindo: '🔧 CI falhou, corrigindo', mesclado: '✅ mesclado', aprovado: '✅ CI passou', falhou: '❌ CI falhando', conflito: '⚠️ conflito ao mesclar' };
+        const linha = document.createElement('div');
+        linha.className = 'pr-github';
+        if (r.repo.url) {
+          const a = Object.assign(document.createElement('a'), { href: r.repo.url, target: '_blank', rel: 'noopener', textContent: `🔀 PR #${r.repo.pr}` });
+          linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
+        } else linha.textContent = `⚠️ GitHub: ${r.repo.erro}`;
+        resp.appendChild(linha);
+      }
       if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
       li.appendChild(resp);
     });
