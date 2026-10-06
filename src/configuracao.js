@@ -13,7 +13,7 @@ const SUGESTOES = {
   anthropic: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-fable-5-1'],
   gemini: ['gemini-3-flash-preview'],
   openai: [],
-  compativel: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openrouter/free', 'meta/llama-3.3-70b-instruct'],
+  compativel: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openrouter/free', 'meta/llama-3.3-70b-instruct', 'mistral-small-latest', 'mistral-medium-latest'],
 };
 
 // atalhos para preencher endereço e chave das APIs compatíveis mais comuns
@@ -21,6 +21,7 @@ const PRESETS = {
   Groq: { baseUrl: 'https://api.groq.com/openai/v1', chaveEnv: 'GROQ_API_KEY', modelo: 'openai/gpt-oss-120b' },
   OpenRouter: { baseUrl: 'https://openrouter.ai/api/v1', chaveEnv: 'OPENROUTER_API_KEY', modelo: 'openrouter/free' },
   NVIDIA: { baseUrl: 'https://integrate.api.nvidia.com/v1', chaveEnv: 'NVIDIA_API_KEY', modelo: 'openai/gpt-oss-120b' },
+  Mistral: { baseUrl: 'https://api.mistral.ai/v1', chaveEnv: 'MISTRAL_API_KEY', modelo: 'mistral-small-latest' },
   Ollama: { baseUrl: 'http://localhost:11434/v1', chaveEnv: '', modelo: '' },
 };
 
