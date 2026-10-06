@@ -179,6 +179,9 @@ dialog button.link { background: none; border: none; color: #8fb4ff; cursor: poi
 .cfg-form label.linha input { width: auto; }
 .cfg-form .presets { font-size: 12px; color: var(--suave); margin-bottom: 6px; }
 .cfg-form .chave { margin: 0; font-size: 12px; color: var(--suave); }
+.cfg-form .linha-modelo { display: flex; gap: 8px; }
+.cfg-form .linha-modelo button { flex: none; font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--texto); background: none; border: 1px solid var(--borda); }
+.cfg-form .linha-modelo button:disabled { opacity: 0.6; cursor: default; }
 .cfg-form .chave.ok { color: var(--trabalhando); }
 .cfg-form .chave.falta { color: var(--aguardando); }
 .cfg-form .acoes { display: flex; gap: 8px; justify-content: flex-end; }

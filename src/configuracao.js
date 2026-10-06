@@ -20,7 +20,8 @@ const SUGESTOES = {
 const PRESETS = {
   Groq: { baseUrl: 'https://api.groq.com/openai/v1', chaveEnv: 'GROQ_API_KEY', modelo: 'openai/gpt-oss-120b' },
   OpenRouter: { baseUrl: 'https://openrouter.ai/api/v1', chaveEnv: 'OPENROUTER_API_KEY', modelo: 'openrouter/free' },
-  NVIDIA: { baseUrl: 'https://integrate.api.nvidia.com/v1', chaveEnv: 'NVIDIA_API_KEY', modelo: 'openai/gpt-oss-120b' },
+  // sem modelo fixo: os catálogos mudam (modelos são desativados); o atalho busca a lista atual
+  NVIDIA: { baseUrl: 'https://integrate.api.nvidia.com/v1', chaveEnv: 'NVIDIA_API_KEY', modelo: '' },
   Mistral: { baseUrl: 'https://api.mistral.ai/v1', chaveEnv: 'MISTRAL_API_KEY', modelo: 'mistral-small-latest' },
   Ollama: { baseUrl: 'http://localhost:11434/v1', chaveEnv: '', modelo: '' },
 };
@@ -106,18 +107,41 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
     const funcao = el('input', { name: 'funcao', value: atual.funcao || '', placeholder: 'ex.: Escreve legendas e roteiros' });
     const instrucoes = el('textarea', { name: 'instrucoes', rows: 7, placeholder: 'Você é o … da agência. …' }, atual.instrucoes || '');
     const statusChave = el('p', { class: 'chave' });
+    // lista completa de modelos, buscada no provedor com a chave do servidor
+    const listaModelos = el('select', { class: 'lista-modelos', hidden: true, onchange: () => { if (listaModelos.value) modelo.value = listaModelos.value; } });
+    const botaoModelos = el('button', { type: 'button', class: 'secundario', onclick: () => carregarModelos() }, 'Ver todos');
+    async function carregarModelos() {
+      botaoModelos.disabled = true;
+      botaoModelos.textContent = 'Buscando…';
+      try {
+        const { modelos } = await api('api/motores/modelos', dados());
+        listaModelos.replaceChildren(
+          el('option', { value: '' }, `${modelos.length} modelos disponíveis — escolha um`),
+          ...modelos.map((m) => el('option', { value: m, selected: m === modelo.value }, m)),
+        );
+        listaModelos.hidden = false;
+        datalist.replaceChildren(...modelos.map((m) => el('option', { value: m })));
+      } catch (erro) {
+        resultado.className = 'resultado falha';
+        resultado.textContent = `✗ Não consegui buscar os modelos: ${erro.message}`;
+      } finally {
+        botaoModelos.disabled = false;
+        botaoModelos.textContent = 'Ver todos';
+      }
+    }
     const resultado = el('div', { class: 'resultado' });
 
     const presets = el('div', { class: 'presets' }, 'Atalhos: ', Object.keys(PRESETS).map((nome) => el('button', {
       type: 'button', class: 'link', onclick: () => {
         const p = PRESETS[nome];
-        baseUrl.value = p.baseUrl; chaveEnv.value = p.chaveEnv; if (p.modelo) modelo.value = p.modelo;
+        baseUrl.value = p.baseUrl; chaveEnv.value = p.chaveEnv; modelo.value = p.modelo || '';
         atualizar();
+        if (!p.chaveEnv || estado.chaves[p.chaveEnv]) carregarModelos(); // já mostra os modelos disponíveis
       },
     }, nome)));
 
     const grupos = {
-      modelo: campo('Modelo', el('span', {}, modelo, datalist), 'Escolha uma sugestão ou digite o nome exato do painel do provedor.'),
+      modelo: campo('Modelo', el('span', { class: 'linha-modelo' }, modelo, datalist, botaoModelos), 'Digite o nome exato ou clique em "Ver todos" para escolher da lista do provedor.', ),
       compat: el('div', {}, presets, campo('Endereço da API (baseUrl)', baseUrl), campo('Variável da chave no .env', chaveEnv, 'Deixe vazio se a API não pede chave (ex.: Ollama).')),
       webhook: campo('URL do webhook', webhook),
       esforco: campo('Esforço (Claude)', esforco, 'Mais esforço = respostas mais caprichadas, mais lentas e mais caras.'),
@@ -126,6 +150,7 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
     function atualizar() {
       const p = provedor.value;
       grupos.modelo.hidden = p === 'webhook';
+      listaModelos.hidden = true; // a lista é do provedor anterior; busque de novo
       grupos.compat.hidden = p !== 'compativel';
       grupos.webhook.hidden = p !== 'webhook';
       grupos.esforco.hidden = p !== 'anthropic';
@@ -177,7 +202,7 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
     f.append(
       el('h3', {}, nomeDe(id)),
       campo('IA', provedor),
-      grupos.modelo, grupos.compat, grupos.webhook, statusChave, grupos.esforco,
+      grupos.modelo, listaModelos, grupos.compat, grupos.webhook, statusChave, grupos.esforco,
       campo('Função (o Orquestrador lê isto para decidir a quem passar cada tarefa)', funcao),
       campo('Instruções (o papel e o jeito de trabalhar deste agente)', instrucoes),
       el('label', { class: 'linha' }, delegar, el('span', {}, 'Pode delegar tarefas para a equipe (Orquestrador)')),

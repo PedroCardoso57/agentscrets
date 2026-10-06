@@ -100,4 +100,43 @@ async function webhook({ webhook: url, pedido, ordem, agente }) {
 
 export const PROVEDORES = { anthropic, openai, gemini, compativel, webhook };
 
+// ---------- lista de modelos disponíveis (para a tela Equipe) ----------
+
+async function pegarJSON(url, cabecalhos) {
+  const r = await fetch(url, { headers: cabecalhos, signal: AbortSignal.timeout(20000) });
+  const texto = await r.text();
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${texto.slice(0, 200)}`);
+  return JSON.parse(texto);
+}
+
+// Pergunta ao provedor quais modelos a sua chave pode usar. Devolve os nomes em ordem alfabética.
+export async function listarModelos(cfg) {
+  let ids = [];
+  if (cfg.provedor === 'anthropic') {
+    clienteAnthropic ??= new Anthropic({ apiKey: chave('ANTHROPIC_API_KEY', 'Claude'), timeout: TEMPO_MAXIMO });
+    for await (const m of clienteAnthropic.models.list()) ids.push(m.id);
+  } else if (cfg.provedor === 'gemini') {
+    let pagina = '';
+    do {
+      const dados = await pegarJSON(
+        `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000${pagina ? `&pageToken=${encodeURIComponent(pagina)}` : ''}`,
+        { 'x-goog-api-key': chave('GEMINI_API_KEY', 'Gemini') },
+      );
+      for (const m of dados.models || []) {
+        if ((m.supportedGenerationMethods || []).includes('generateContent')) ids.push(m.name.replace(/^models\//, ''));
+      }
+      pagina = dados.nextPageToken;
+    } while (pagina);
+  } else if (cfg.provedor === 'openai' || cfg.provedor === 'compativel') {
+    const base = cfg.provedor === 'openai' ? 'https://api.openai.com/v1' : cfg.baseUrl;
+    if (!base) throw new Error('informe o endereço da API (baseUrl)');
+    const chaveApi = cfg.provedor === 'openai' ? chave('OPENAI_API_KEY', 'OpenAI') : cfg.chaveEnv ? chave(cfg.chaveEnv, base) : null;
+    const dados = await pegarJSON(`${base.replace(/\/$/, '')}/models`, chaveApi ? { Authorization: `Bearer ${chaveApi}` } : {});
+    ids = (dados.data || dados.models || []).map((m) => m.id || m.name).filter(Boolean);
+  } else {
+    return [];
+  }
+  return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
+}
+
 export const NOMES = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini', compativel: 'API compatível', webhook: 'webhook' };

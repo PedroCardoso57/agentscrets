@@ -14,7 +14,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PROVEDORES, NOMES } from './provedores.js';
+import { PROVEDORES, NOMES, listarModelos } from './provedores.js';
 
 const VOLTAR_AO_OCIOSO = 8000;
 
@@ -141,6 +141,12 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return c;
   }
 
+  // Modelos que a chave consegue usar no provedor escolhido (sem exigir modelo preenchido).
+  async function modelos(dados) {
+    const c = validar({ ...dados, modelo: dados.modelo || 'qualquer', webhook: dados.webhook || 'https://x.invalid' });
+    return listarModelos(c);
+  }
+
   // Faz uma pergunta curtinha com a configuração dada, para conferir modelo e chave antes de salvar.
   async function testar(id, dados) {
     const c = validar(dados);
@@ -253,5 +259,5 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return configuracao();
   }
 
-  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe };
+  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe, modelos };
 }

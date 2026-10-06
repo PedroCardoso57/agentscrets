@@ -257,6 +257,11 @@ async function atender(req, res) {
   // ---------- configuração da equipe pela tela ----------
 
   if (rota === '/api/motores' && req.method === 'GET') return enviarJSON(res, 200, motores.listar());
+  if (rota === '/api/motores/modelos' && req.method === 'POST') {
+    let dados;
+    try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
+    try { return enviarJSON(res, 200, { modelos: await motores.modelos(dados) }); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
   if (rota === '/api/motores/restaurar' && req.method === 'POST') { await motores.restaurar(); return enviarJSON(res, 200, motores.listar()); }
 
   const motor = rota.match(/^\/api\/motores\/([\w-]{1,40})(\/testar)?$/);
