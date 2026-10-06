@@ -193,6 +193,16 @@ O botão **📄 Documentação** abre o documento do projeto, que o **Redator** 
 - Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
+## Visual e marca
+
+- **Barra lateral** com os menus (no celular vira a barra de baixo); passe o mouse para ver o nome de cada um. ⌂ volta para a visão do escritório todo.
+- **Faixa "Hoje"** no topo: entregas do dia, quem está trabalhando, erros e a próxima rotina.
+- **Painel com abas** Ordens | Equipe; cada ordem é um cartão na cor do agente, com horário, e respostas longas ficam recolhidas ("ver mais").
+- **Avisos** quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
+- **Escritório vivo**: dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no Revisor e no Pesquisador, gorro no Programador, crachá no Orquestrador, lápis no Redator), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo Revisor quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
+- **Modo lista** (☰ na barra): esconde o 3D e mostra ordens e equipe em tela cheia. No celular ele já começa assim; a escolha fica lembrada no aparelho.
+- **Sua marca**: no `.env`, `MARCA_NOME`, `MARCA_SUBTITULO` e `MARCA_COR` (hex) mudam o topo, a cor de destaque e a placa na parede. Fonte Montserrat.
+
 ## Clientes, ajustes, Revisor, internet e rotinas
 
 ### 📇 Clientes

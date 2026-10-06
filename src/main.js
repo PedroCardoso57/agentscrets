@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/CSS2DRenderer.js';
 import { AGENTES, CHEFE, STATUS } from './agentes.js';
-import { criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro } from './escritorio.js';
+import { MESA, criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro, definirMarcaSala, definirClientesMural, atualizarRelogio, fatorDia, aplicarDiaNoite } from './escritorio.js';
 import { Boneco } from './boneco.js';
 import { Chefe } from './chefe.js';
 import { Cranio } from './cranio.js';
@@ -11,6 +11,8 @@ import { criarConfiguracao } from './configuracao.js';
 import { criarJanelaDocumentacao } from './documentacao.js';
 import { criarJanelaEntregas } from './entregas.js';
 import { criarGestao } from './gestao.js';
+import { criarInterface } from './interface.js';
+import { Efeitos } from './efeitos.js';
 
 // ---------- renderização ----------
 
@@ -20,6 +22,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // cores mais suaves nas luzes fortes
+renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
 
 const rotulos = new CSS2DRenderer();
@@ -38,12 +42,37 @@ controles.maxPolarAngle = Math.PI * 0.47;
 controles.minDistance = 2.5;
 controles.maxDistance = 35;
 
-cena.add(new THREE.HemisphereLight('#fff6e8', '#5a6070', 1.1));
+const hemi = new THREE.HemisphereLight('#fff6e8', '#4a4a55', 1.1);
+cena.add(hemi);
 const sol = new THREE.DirectionalLight('#fff1d6', 1.6);
 sol.castShadow = true;
 sol.shadow.mapSize.set(2048, 2048);
 sol.shadow.bias = -0.0005;
 cena.add(sol, sol.target);
+
+// ---------- interface em volta da cena ----------
+
+let cenaPausada = false; // modo lista: não desenha o 3D (economiza bateria no celular)
+const ui = criarInterface({
+  aoVisaoGeral: () => { if (sala) enquadrarTudo(); },
+  aoMudarModo: (lista) => { cenaPausada = lista; },
+});
+
+const efeitos = new Efeitos(cena);
+
+// pontos de onde saem e chegam as folhas de entrega
+const mesaDe = (id) => estacoes.get(id)?.grupo.localToWorld(new THREE.Vector3(0.35, MESA.altura + 0.12, MESA.zCentro - 0.1));
+const mesaDoChefe = () => chefe.grupo.localToWorld(new THREE.Vector3(-0.35, MESA.altura + 0.06, MESA.zCentro - 0.1));
+const REVISOR = 'revisor';
+
+// marca do .env no topo e na placa da parede
+ui.carregarMarca().then((m) => { if (m) definirMarcaSala(m.nome, m.cor); });
+
+// dia e noite pelo horário de Brasília (luzes, janelas e relógio de parede)
+function atualizarHorario() {
+  aplicarDiaNoite(fatorDia(), { cena, hemi, sol });
+  atualizarRelogio();
+}
 
 // ---------- montagem do escritório ----------
 
@@ -89,6 +118,7 @@ function montar() {
   sol.shadow.camera.updateProjectionMatrix();
   chefe.posicionar(agentes.length);
 
+  efeitos.limparAneis();
   agentes.forEach((agente, i) => {
     const { x, z, rot } = posicaoEstacao(i);
     const grupo = new THREE.Group();
@@ -100,6 +130,7 @@ function montar() {
     grupo.add(estacao.grupo, boneco.raiz);
     cena.add(grupo);
 
+    efeitos.criarAnel(agente.id, grupo, agente.cor);
     const etiqueta = criarEtiqueta(agente.nome);
     boneco.raiz.add(etiqueta);
 
@@ -109,6 +140,7 @@ function montar() {
 
   montarPainel();
   for (const id of estacoes.keys()) mostrarStatus(id);
+  atualizarHorario();
 }
 
 // ---------- painel lateral ----------
@@ -122,6 +154,7 @@ const nomeCliente = (id) => listaClientes.find((c) => c.id === id)?.nome || id;
 // seletor de cliente na barra de ordens (só aparece quando há clientes cadastrados)
 function atualizarClientes(lista) {
   listaClientes = lista;
+  definirClientesMural(lista.map((c) => c.nome));
   const atual = clienteOrdem.value;
   clienteOrdem.replaceChildren(new Option('Sem cliente', ''), ...lista.map((c) => new Option(`👤 ${c.nome}`, c.id)));
   clienteOrdem.value = lista.some((c) => c.id === atual) ? atual : '';
@@ -137,6 +170,7 @@ function montarPainel() {
     const li = document.createElement('li');
     li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
     li.querySelector('.nome span').textContent = e.agente.nome;
+    li.style.setProperty('--cor', e.agente.cor);
     e.item = li;
     atualizarSubtitulo(e);
     li.onclick = () => selecionar(id);
@@ -150,6 +184,7 @@ function montarPainel() {
     destinatario.add(new Option(`Para: ${e.agente.nome}`, id));
   }
   destinatario.value = estacoes.has(selecionado) || (selecionado === 'auto' && decisorAtivo) ? selecionado : decisorAtivo ? 'auto' : 'todos';
+  ui.contador('equipe', estacoes.size);
 }
 
 function atualizarSubtitulo(e) {
@@ -178,6 +213,14 @@ function mostrarStatus(id) {
   e.estacao.lampada.material.color.set(cor);
   e.estacao.lampada.material.emissive.set(cor);
   e.estacao.luz.color.set(cor);
+  atualizarHoje();
+}
+
+// faixa "Hoje" e contador de ordens em andamento
+function atualizarHoje() {
+  const ordens = [...ordensVistas.values()].map((v) => v.ordem);
+  ui.atualizarKpis({ ordens, trabalhando: [...estacoes.values()].filter((x) => x.estado === 'trabalhando').length });
+  ui.contador('ordens', ordens.filter((o) => o.estado !== 'respondida').length);
 }
 
 // ---------- câmera ----------
@@ -288,13 +331,37 @@ function nomeDe(id) {
 
 const ROTULO_ORDEM = { pendente: 'aguardando motor', entregue: 'entregue ao motor', respondida: 'respondida' };
 
+const expandidas = new Set(); // respostas abertas com "ver mais"
+const corDe = (id) => estacoes.get(id)?.agente.cor || 'var(--marca)';
+function horaCurta(iso) {
+  const d = new Date(iso);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+// Pede ao agente para refazer uma entrega (painel e avisos usam o mesmo caminho).
+async function pedirAjusteDe(ordem, indice, agente) {
+  const pedido = prompt(`O que ${nomeDe(agente)} deve mudar nesta entrega?`, '');
+  if (!pedido?.trim()) return;
+  try {
+    await integracao.pedirAjuste(ordem.id, indice, pedido);
+    avisar(`↩ ${nomeDe(agente)} vai ajustar a entrega.`);
+  } catch (erro) {
+    avisar(`Não consegui pedir o ajuste: ${erro.message}`, true);
+  }
+}
+
 function renderizarOrdens() {
   const todas = [...ordensVistas.values()].map((v) => v.ordem).reverse().slice(0, 20);
   if (!todas.length) return;
   listaOrdens.innerHTML = '';
   for (const o of todas) {
     const li = document.createElement('li');
-    li.innerHTML = '<div class="cab"><b></b><span class="chip"></span></div><div class="texto"></div>';
+    li.dataset.ordem = o.id;
+    li.style.setProperty('--cor', corDe(o.para));
+    li.innerHTML = '<div class="cab"><b></b><span class="hora"></span><span class="chip"></span></div><div class="texto"></div>';
+    li.querySelector('.hora').textContent = horaCurta(o.criadaEm);
     // ordens delegadas por um agente (ex.: Orquestrador) mostram quem mandou
     li.querySelector('.cab b').textContent = o.de && o.de !== 'chefe' ? `${nomeDe(o.de)} → ${nomeDe(o.para)}` : `Você → ${nomeDe(o.para)}`;
     const chip = li.querySelector('.chip');
@@ -324,7 +391,17 @@ function renderizarOrdens() {
       resp.className = 'resp';
       resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
       resp.querySelector('b').textContent = nomeDe(r.agente);
-      resp.querySelector('.corpo-resp').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      const corpoResp = resp.querySelector('.corpo-resp');
+      corpoResp.textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      // respostas longas ficam recolhidas, com "ver mais"
+      const chaveResp = `${o.id}:${indice}`;
+      if (r.texto.length > 280) {
+        const aberta = expandidas.has(chaveResp);
+        corpoResp.classList.toggle('recolhida', !aberta);
+        const verMais = Object.assign(document.createElement('button'), { type: 'button', className: 'ver-mais', textContent: aberta ? 'ver menos' : 'ver mais' });
+        verMais.onclick = () => { if (expandidas.has(chaveResp)) expandidas.delete(chaveResp); else expandidas.add(chaveResp); renderizarOrdens(); };
+        corpoResp.after(verMais);
+      }
       if (r.revisao?.observacoes) {
         const obs = document.createElement('details');
         obs.className = 'obs-revisor';
@@ -394,16 +471,7 @@ function barraAvaliacao(ordem, r, indice) {
     ajustar.className = 'ajustar';
     ajustar.textContent = '↩ ajustar';
     ajustar.title = `Pedir para ${nomeDe(r.agente)} refazer esta entrega`;
-    ajustar.onclick = async () => {
-      const pedido = prompt(`O que ${nomeDe(r.agente)} deve mudar nesta entrega?`, '');
-      if (!pedido?.trim()) return;
-      try {
-        await integracao.pedirAjuste(ordem.id, indice, pedido);
-        avisar(`↩ ${nomeDe(r.agente)} vai ajustar a entrega.`);
-      } catch (erro) {
-        avisar(`Não consegui pedir o ajuste: ${erro.message}`, true);
-      }
-    };
+    ajustar.onclick = () => pedirAjusteDe(ordem, indice, r.agente);
     meta.appendChild(ajustar);
   }
   meta.appendChild(info);
@@ -423,8 +491,40 @@ function aoOrdem(ordem, { nova }) {
   const respostasAntes = vista ? vista.respostas : 0;
   ordensVistas.set(ordem.id, { ordem, respostas: ordem.respostas.length });
   renderizarOrdens();
+  atualizarHoje();
 
-  // respostas novas aparecem no balão do agente por alguns segundos
+  // respostas novas aparecem no balão do agente por alguns segundos (e num aviso)
+  ordem.respostas.slice(respostasAntes).forEach((r, i) => {
+    if (!vista || r.simulada) return;
+    const indice = respostasAntes + i;
+    const erro = r.erro || /^Erro:/.test(r.texto);
+    // a folha sai da mesa do agente, passa pelo Revisor (se revisou) e pousa na mesa do chefe
+    const origem = mesaDe(r.agente);
+    if (!erro && origem && !cenaPausada) {
+      const pontos = [origem];
+      if (r.revisao && !r.revisao.erro && r.agente !== REVISOR && estacoes.has(REVISOR)) pontos.push(mesaDe(REVISOR));
+      pontos.push(mesaDoChefe());
+      efeitos.entrega(pontos);
+    }
+    ui.avisar({
+      icone: erro ? '⚠️' : r.revisao && !r.revisao.erro ? '✅' : '📦',
+      titulo: erro ? `${nomeDe(r.agente)} teve um erro` : `${nomeDe(r.agente)} entregou${ordem.cliente ? ` · ${nomeCliente(ordem.cliente)}` : ''}`,
+      texto: r.texto.split('\n').find((l) => l.trim()) || '',
+      cor: corDe(r.agente),
+      acoes: [
+        { rotulo: 'Ver', principal: true, fn: () => ui.destacarOrdem(ordem.id) },
+        ...(erro ? [] : [{ rotulo: '↩ Ajustar', fn: () => pedirAjusteDe(ordem, indice, r.agente) }]),
+      ],
+    });
+  });
+  if (nova && vista === undefined && (ordem.origem?.rotina || ordem.origem?.telegram) && (!ordem.de || ordem.de === 'chefe')) {
+    ui.avisar({ icone: ordem.origem.rotina ? '⏰' : '✈️', titulo: ordem.origem.rotina ? 'Rotina disparou' : 'Ordem pelo Telegram', texto: `${nomeDe(ordem.para)}: ${ordem.texto}`, cor: corDe(ordem.para), duracao: 6000 });
+    if (!cenaPausada && sala) {
+      if (ordem.origem.rotina) efeitos.despertador(mesaDoChefe().add(new THREE.Vector3(0, 0.95, 0)), 'Rotina!');
+      // o aviãozinho entra por uma janela do fundo e pousa na mesa do chefe
+      else efeitos.telegram(new THREE.Vector3(sala.centro.x + 2, 2.1, sala.centro.z - sala.profundidade / 2 + 0.4), mesaDoChefe());
+    }
+  }
   for (const r of ordem.respostas.slice(respostasAntes)) {
     const e = estacoes.get(r.agente);
     if (!e || !vista) continue;
@@ -553,13 +653,16 @@ configuracao = criarConfiguracao({
 
 // ---------- loop ----------
 
-camera.position.copy(animacaoCamera.posicao).add(new THREE.Vector3(6, 6, 6));
+// abre já enquadrado, com uma aproximação curta (antes ela partia de dentro da sala)
+camera.position.copy(animacaoCamera.posicao).add(new THREE.Vector3(3, 3, 3));
 controles.target.copy(animacaoCamera.alvo);
+animacaoCamera.de = { alvo: controles.target.clone(), pos: camera.position.clone() };
 
 const relogio = new THREE.Clock();
 let acumTela = 0;
 function quadro() {
   const dt = Math.min(relogio.getDelta(), 0.05);
+  if (cenaPausada) { requestAnimationFrame(quadro); return; }
   const t = relogio.elapsedTime;
 
   if (animacaoCamera) {
@@ -576,6 +679,7 @@ function quadro() {
   if (redesenhar) acumTela = 0;
 
   chefe.atualizar(dt, t);
+  efeitos.atualizar(dt, t, camera, (id) => estacoes.get(id)?.estado);
   if (cranio.grupo.visible) cranio.atualizar(dt, t);
   if (redesenhar) desenharTela(chefe.estacao.tela, chefe.agente, chefe.digitando ? 'trabalhando' : 'ocioso', t);
 
@@ -593,6 +697,7 @@ function quadro() {
   requestAnimationFrame(quadro);
 }
 quadro();
+setInterval(atualizarHorario, 30000);
 
 // Em telas largas, desloca o centro da imagem para a esquerda do painel lateral.
 function ajustarEnquadramento() {

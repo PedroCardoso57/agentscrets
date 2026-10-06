@@ -107,7 +107,7 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
   function filtrar({ q = '', agente = '', cliente = '' } = {}) {
     const termo = q.trim().toLowerCase();
     return indice
-      .filter((e) => (!agente || e.agente === agente) && (!cliente || e.cliente === cliente) && (!termo || `${e.pedido}\n${e.trecho}\n${e.agente}\n${e.motor}`.toLowerCase().includes(termo)))
+      .filter((e) => (!agente || e.agente === agente) && (!cliente || e.cliente === cliente) && (!termo || `${e.pedido}\n${e.trecho}\n${e.agente}\n${e.motor}\n${e.cliente ? nomeCliente(e.cliente) : ''}`.toLowerCase().includes(termo)))
       .sort((a, b) => (a.em < b.em ? 1 : -1)); // mais nova primeiro
   }
 

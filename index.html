@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Agentscrets — Escritório 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" />
   <link rel="stylesheet" href="src/estilo.css" />
   <script type="importmap">
     {
@@ -18,25 +21,46 @@
   <div id="cena"></div>
 
   <header id="topo">
-    <h1>agentscrets <span>escritório de agentes de IA</span></h1>
-    <div class="botoes-topo">
-      <button type="button" id="abrir-clientes" title="Fichas dos clientes: tom de voz, público, o que evitar">📇 Clientes</button>
-      <button type="button" id="abrir-rotinas" title="Ordens que saem sozinhas num horário">🗓 Rotinas</button>
-      <button type="button" id="abrir-entregas" title="Tudo o que os agentes já produziram">📦 Entregas</button>
-      <button type="button" id="abrir-documentacao" title="Documentação do projeto, mantida pelo Redator">📄 Documentação</button>
-      <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
-      <button type="button" id="abrir-equipe" title="Escolher a IA de cada agente">⚙ Equipe</button>
-      <div id="conexao" title="Origem dos status">● demo</div>
+    <div class="marca">
+      <span class="selo" aria-hidden="true">a</span>
+      <h1><span class="nome-marca">agentscrets</span><small class="sub-marca">escritório de agentes de IA</small></h1>
     </div>
+    <div id="hoje" aria-label="Resumo de hoje">
+      <div class="kpi" title="Entregas feitas hoje"><b data-kpi="entregas">0</b><span>entregas hoje</span></div>
+      <div class="kpi" title="Agentes trabalhando agora"><b data-kpi="trabalhando">0</b><span>trabalhando</span></div>
+      <div class="kpi" title="Erros hoje (veja no painel de ordens)"><b data-kpi="erros">0</b><span>erros</span></div>
+      <div class="kpi largo" title="Próxima rotina agendada"><b data-kpi="rotina">—</b><span data-kpi="rotina-nome">próxima rotina</span></div>
+    </div>
+    <div id="conexao" title="Origem dos status">● demo</div>
   </header>
 
+  <nav id="barra" aria-label="Menu">
+    <button type="button" id="visao-geral" data-rotulo="Ver o escritório todo"><span aria-hidden="true">⌂</span></button>
+    <button type="button" id="abrir-clientes" data-rotulo="Clientes"><span aria-hidden="true">📇</span></button>
+    <button type="button" id="abrir-rotinas" data-rotulo="Rotinas"><span aria-hidden="true">🗓</span></button>
+    <button type="button" id="abrir-entregas" data-rotulo="Entregas"><span aria-hidden="true">📦</span></button>
+    <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><span aria-hidden="true">📄</span></button>
+    <button type="button" id="abrir-relatorio" data-rotulo="Relatório"><span aria-hidden="true">📊</span></button>
+    <button type="button" id="abrir-equipe" data-rotulo="Equipe e IAs"><span aria-hidden="true">⚙</span></button>
+    <span class="espaco"></span>
+    <button type="button" id="alternar-modo" data-rotulo="Modo lista (mais leve)"><span aria-hidden="true">☰</span></button>
+  </nav>
+
   <aside id="painel">
-    <h2>Ordens</h2>
-    <ul id="lista-ordens"><li class="vazio">Nenhuma ordem ainda. Escreva na barra de baixo: o seu bonequinho leva a ordem até a mesa do agente.</li></ul>
-    <h2 class="titulo-equipe">Equipe</h2>
-    <ul id="lista-agentes"></ul>
-    <p class="dica">Clique num agente (aqui ou na cena) para focar e mandar ordem para ele. Arraste para girar, role para dar zoom.</p>
+    <div class="abas" role="tablist">
+      <button type="button" role="tab" class="aba ativa" data-aba="ordens" aria-selected="true">Ordens <span class="contador" data-contador="ordens"></span></button>
+      <button type="button" role="tab" class="aba" data-aba="equipe" aria-selected="false">Equipe <span class="contador" data-contador="equipe"></span></button>
+    </div>
+    <section class="conteudo-aba" data-conteudo="ordens">
+      <ul id="lista-ordens"><li class="vazio">Nenhuma ordem ainda. Escreva na barra de baixo: o seu bonequinho leva a ordem até a mesa do agente.</li></ul>
+    </section>
+    <section class="conteudo-aba" data-conteudo="equipe" hidden>
+      <ul id="lista-agentes"></ul>
+      <p class="dica">Clique num agente (aqui ou na cena) para focar e mandar ordem para ele. Arraste para girar, role para dar zoom.</p>
+    </section>
   </aside>
+
+  <div id="avisos" aria-live="polite"></div>
 
   <form id="comando" autocomplete="off">
     <label class="quem" title="Seu bonequinho de chefe">

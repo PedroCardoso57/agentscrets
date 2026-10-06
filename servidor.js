@@ -334,6 +334,14 @@ async function atender(req, res) {
   }
 
   if (rota === '/api/estado') return enviarJSON(res, 200, [...estado.values()]);
+  // marca do escritório (topo da página e placa na parede)
+  if (rota === '/api/marca') {
+    return enviarJSON(res, 200, {
+      nome: (process.env.MARCA_NOME || 'agentscrets').slice(0, 40),
+      subtitulo: (process.env.MARCA_SUBTITULO || 'escritório de agentes de IA').slice(0, 80),
+      cor: /^#[0-9a-f]{6}$/i.test(process.env.MARCA_COR || '') ? process.env.MARCA_COR : '#e11d2a',
+    });
+  }
 
   if (rota === '/api/ordens' && req.method === 'POST') {
     let dados;
