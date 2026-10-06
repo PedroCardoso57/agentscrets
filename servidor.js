@@ -35,6 +35,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { criarMotores } from './motores/index.js';
 import { criarDecisor } from './motores/decisor.js';
 import { criarDocumentacao } from './motores/documentacao.js';
+import { criarEntregas } from './motores/entregas.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -155,6 +156,8 @@ function marcarEntregue(ordem, agente) {
 // extra: { motor, ms, erro } — de qual IA veio e quanto demorou, para o relatório
 function registrarResposta(ordem, agente, texto, extra = {}) {
   ordem.respostas.push({ agente, texto: String(texto).slice(0, 20000), em: new Date().toISOString(), ...extra });
+  // vira arquivo .md no arquivo de entregas
+  entregas.registrar(ordem, ordem.respostas.length - 1).catch((erro) => console.error('[entregas]', erro.message));
   // vira evento da documentação viva (o trecho basta para o documentador resumir)
   documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`);
 }
@@ -201,6 +204,7 @@ async function encaminhar({ para, texto, de = 'chefe', contexto }) {
   return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao });
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
+const entregas = criarEntregas({ dadosDir: DADOS_DIR });
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)) });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
@@ -272,6 +276,23 @@ async function atender(req, res) {
     }
   }
 
+  // ---------- arquivo de entregas ----------
+  if (rota === '/api/entregas') {
+    return enviarJSON(res, 200, entregas.listar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '', pagina: url.searchParams.get('pagina') }));
+  }
+  if (rota === '/api/entregas/arquivo') {
+    try {
+      const texto = await entregas.ler(url.searchParams.get('caminho'));
+      res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+      return res.end(texto);
+    } catch { return enviarJSON(res, 404, { erro: 'entrega não encontrada' }); }
+  }
+  if (rota === '/api/entregas/exportar') {
+    const texto = await entregas.exportar({ q: url.searchParams.get('q') || '', agente: url.searchParams.get('agente') || '' });
+    res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="entregas.md"' });
+    return res.end(texto);
+  }
+
   if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
   if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
 
@@ -320,6 +341,14 @@ async function atender(req, res) {
   if (rota === '/api/motores/restaurar' && req.method === 'POST') { await motores.restaurar(); return enviarJSON(res, 200, motores.listar()); }
 
   const motor = rota.match(/^\/api\/motores\/([\w-]{1,40})(\/testar)?$/);
+  if (motor && !motor[2] && req.method === 'DELETE') {
+    if (motor[1] === 'chefe') return enviarJSON(res, 400, { erro: 'o chefe não sai' });
+    await motores.removerAgente(motor[1]);
+    estado.delete(motor[1]);
+    transmitir('removido', { id: motor[1] });
+    documentacao.registrar(`Equipe: ${motor[1]} saiu da equipe`);
+    return enviarJSON(res, 200, motores.listar());
+  }
   if (motor && req.method === 'POST') {
     let dados;
     try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
@@ -350,6 +379,7 @@ async function atender(req, res) {
       resp.comentario = typeof dados.comentario === 'string' ? dados.comentario.trim().slice(0, 500) : resp.comentario;
       if (!resp.comentario) delete resp.comentario;
     }
+    entregas.registrar(ordem, Number(dados.indice)).catch(() => {}); // regrava o .md com a avaliação
     transmitir('ordem', ordem);
     return enviarJSON(res, 200, ordem);
   }
@@ -423,6 +453,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 
 await carregar();
 await documentacao.carregar();
+await entregas.carregar(ordens);
 motores.iniciar(estado);
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {

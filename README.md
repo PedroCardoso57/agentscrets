@@ -123,6 +123,8 @@ Edite `src/agentes.js`. Cada agente tem:
 
 As mesas são distribuídas sozinhas (8 por bloco); a sala cresce conforme a equipe aumenta.
 
+Com o servidor, a equipe é a do `motores.json`: para tirar alguém, use **Remover da equipe** no ⚙ Equipe (a mesa some na hora; as entregas antigas continuam no arquivo).
+
 O seu bonequinho é o `CHEFE`, no mesmo arquivo: troque `nome` (aparece como "★ Você"), cores, cabelo e pele.
 
 ## Ligando as suas IAs (motores embutidos)
@@ -133,7 +135,7 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 {
   "orquestrador": { "provedor": "anthropic", "modelo": "claude-opus-5-5", "delegar": true, "funcao": "Planeja e distribui", "instrucoes": "Você é o Orquestrador..." },
   "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "Escreve legendas", "instrucoes": "Você é o Redator..." },
-  "analista":     { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
+  "revisor":      { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
   "pesquisador":  { "provedor": "gemini", "modelo": "<modelo do Gemini>", "instrucoes": "..." },
   "designer":     { "webhook": "https://seu-n8n.com/webhook/designer" }
 }
@@ -191,6 +193,22 @@ O botão **📄 Documentação** abre o documento do projeto, que o **Redator** 
 - Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
 - Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
 
+## Entregas: tudo o que a equipe já produziu
+
+O botão **📦 Entregas** abre o arquivo de tudo o que os agentes responderam, da mais nova para a mais antiga: busca por texto (no pedido ou na entrega), filtro por agente, leitura formatada, **Copiar texto**, **Baixar .md** de cada uma e **Baixar todas** (junta num só arquivo o que estiver filtrado).
+
+Cada entrega também vira um arquivo `.md` na pasta de dados, organizado por dia (horário de Brasília, ou o `TZ` do `.env`):
+
+```
+dados/entregas/
+  2026-10-06/
+    1432-redator-legenda-sobre-cafe-gelado-f3b4aadb-0.md
+    1433-designer-carrossel-de-lancamento-9a1c22e0-0.md
+  indice.json
+```
+
+O arquivo traz agente, IA, data, quem pediu, tempo, a decisão do Crânio, a sua avaliação (👍 / 👎 regravam o arquivo), o pedido e a entrega. Erros e respostas simuladas não entram. Entregas feitas antes desta versão são arquivadas na primeira vez que o servidor sobe. No Docker, para copiar tudo para fora: `docker compose cp escritorio:/app/dados/entregas ./entregas`.
+
 ## Trocando a IA pela tela e comparando na prática
 
 - **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
@@ -223,7 +241,7 @@ curl -X POST http://localhost:8787/api/status \
 ```python
 import requests
 requests.post("http://localhost:8787/api/status",
-              json={"id": "analista", "status": "concluido", "tarefa": "Relatório pronto"})
+              json={"id": "pesquisador", "status": "concluido", "tarefa": "Pesquisa pronta"})
 ```
 
 Também aceita uma lista de status de uma vez. Um `id` que não existe cria uma **mesa nova** — mande junto `nome`, `funcao`, `atividade` e `cor` se quiser personalizar.

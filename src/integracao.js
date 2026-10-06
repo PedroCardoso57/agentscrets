@@ -22,13 +22,11 @@ const TAREFAS_DEMO = {
   pesquisador: ['Lendo relatórios de mercado', 'Coletando referências', 'Pesquisando concorrentes'],
   redator: ['Escrevendo legenda do post', 'Rascunhando e-mail', 'Criando roteiro de Reels'],
   designer: ['Desenhando carrossel', 'Ajustando paleta de cores', 'Criando thumbnail'],
-  analista: ['Analisando métricas de anúncios', 'Montando dashboard', 'Comparando CTR por campanha'],
   programador: ['Integrando API', 'Corrigindo bug na automação', 'Escrevendo testes'],
-  atendimento: ['Atendendo cliente #1042', 'Respondendo dúvidas no WhatsApp', 'Retornando ligação'],
   revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -111,6 +109,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
   window.Escritorio = {
     atualizar: (id, dados = {}) => { pararDemo(); aplicar({ ...dados, id }); },
     adicionarAgente: (agente) => aoNovoAgente(agente),
+    removerLocal: (id) => aoRemovido(id),
     ordem: (para, texto) => enviarOrdem(para, texto),
     demo: (ligar = true) => (ligar ? iniciarDemo() : pararDemo()),
   };
@@ -165,6 +164,11 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       atual = await r.json();
     } catch { return false; }
     servidorAtivo = true;
+    // com o servidor, a equipe é a dele: some quem saiu da equipe (ex.: removido no ⚙ Equipe)
+    if (atual.length) {
+      const conhecidos = new Set(atual.map((s) => s.id));
+      for (const id of ids()) if (!conhecidos.has(id)) aoRemovido(id);
+    }
     processar(atual);
     // o Laya está ligado? então a página oferece "Automático (Laya decide)"
     const checarDecisor = () => fetch('api/decisor', { cache: 'no-store' }).then((r) => r.json())
@@ -181,6 +185,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('removido', (e) => { try { aoRemovido(JSON.parse(e.data).id); } catch { /* ignora */ } });
     fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.onerror = () => aoConexao('reconectando…', false);
     return true;

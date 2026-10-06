@@ -3,7 +3,7 @@
 //
 //   {
 //     "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "...", "instrucoes": "..." },
-//     "analista":     { "provedor": "openai", "modelo": "...", "instrucoes": "..." },
+//     "revisor":      { "provedor": "openai", "modelo": "...", "instrucoes": "..." },
 //     "orquestrador": { "provedor": "anthropic", "delegar": true, "instrucoes": "..." },
 //     "designer":     { "webhook": "https://seu-n8n/webhook/designer" }
 //   }
@@ -141,6 +141,17 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return c;
   }
 
+  // Tira o agente da equipe (a configuração passa a ser a salva pela tela, como em salvarAgente).
+  async function removerAgente(id) {
+    const bruto = lerBruto();
+    if (!(id in bruto)) return false;
+    delete bruto[id];
+    await mkdir(dadosDir, { recursive: true });
+    await writeFile(`${arquivoEditado}.tmp`, JSON.stringify(bruto, null, 2));
+    await rename(`${arquivoEditado}.tmp`, arquivoEditado);
+    return true;
+  }
+
   // Modelos que a chave consegue usar no provedor escolhido (sem exigir modelo preenchido).
   async function modelos(dados) {
     const c = validar({ ...dados, modelo: dados.modelo || 'qualquer', webhook: dados.webhook || 'https://x.invalid' });
@@ -265,5 +276,5 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     return configuracao();
   }
 
-  return { despachar, iniciar, listar, salvarAgente, testar, restaurar, equipe, modelos, naFila, rotulo };
+  return { despachar, iniciar, listar, salvarAgente, removerAgente, testar, restaurar, equipe, modelos, naFila, rotulo };
 }

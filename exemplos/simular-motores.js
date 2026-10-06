@@ -44,9 +44,7 @@ const TAREFAS = {
   pesquisador: ['Pesquisando concorrentes', 'Lendo artigos do nicho'],
   redator: ['Escrevendo legenda', 'Roteiro de Reels'],
   designer: ['Criando carrossel', 'Editando thumbnail'],
-  analista: ['Relatório de anúncios', 'Calculando ROI'],
   programador: ['Integrando webhook', 'Corrigindo automação'],
-  atendimento: ['Respondendo WhatsApp', 'Retornando cliente'],
   revisor: ['Revisando legenda', 'Aprovando peças'],
 };
 

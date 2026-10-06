@@ -20,6 +20,7 @@
   <header id="topo">
     <h1>agentscrets <span>escritório de agentes de IA</span></h1>
     <div class="botoes-topo">
+      <button type="button" id="abrir-entregas" title="Tudo o que os agentes já produziram">📦 Entregas</button>
       <button type="button" id="abrir-documentacao" title="Documentação do projeto, mantida pelo Redator">📄 Documentação</button>
       <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
       <button type="button" id="abrir-equipe" title="Escolher a IA de cada agente">⚙ Equipe</button>
@@ -72,6 +73,27 @@
     </header>
     <p class="meta-doc"></p>
     <article class="corpo doc"></article>
+  </dialog>
+
+  <dialog id="dlg-entregas" aria-labelledby="titulo-entregas">
+    <header>
+      <h2 id="titulo-entregas">Entregas da equipe</h2>
+      <input name="busca" type="search" placeholder="Buscar no pedido ou na entrega…" aria-label="Buscar" />
+      <select name="agente" aria-label="Agente"><option value="">Todos os agentes</option></select>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <div class="grade-entregas">
+      <div class="coluna-lista">
+        <ul class="lista-entregas"></ul>
+        <div class="rodape-entregas">
+          <span class="total"></span>
+          <button type="button" class="anterior">‹</button>
+          <button type="button" class="proxima">›</button>
+          <button type="button" class="baixar-todas" title="Baixa num único .md tudo o que está filtrado">Baixar todas</button>
+        </div>
+      </div>
+      <div class="leitura-entrega"></div>
+    </div>
   </dialog>
 
   <script type="module" src="src/main.js"></script>

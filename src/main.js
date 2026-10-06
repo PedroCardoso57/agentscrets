@@ -9,6 +9,7 @@ import { Cranio } from './cranio.js';
 import { criarIntegracao } from './integracao.js';
 import { criarConfiguracao } from './configuracao.js';
 import { criarJanelaDocumentacao } from './documentacao.js';
+import { criarJanelaEntregas } from './entregas.js';
 
 // ---------- renderização ----------
 
@@ -453,6 +454,13 @@ integracao = criarIntegracao({
     mostrarStatus(id);
     return true;
   },
+  aoRemovido(id) {
+    const i = agentes.findIndex((a) => a.id === id);
+    if (i < 0) return;
+    agentes.splice(i, 1);
+    montar();
+    enquadrarTudo();
+  },
   aoNovoAgente(dados) {
     if (estacoes.has(dados.id)) return;
     const cores = ['#e5484d', '#4c8dff', '#3fb27f', '#b05cf0', '#e0b23c', '#2ec4d6', '#f07a3a'];
@@ -479,9 +487,11 @@ integracao = criarIntegracao({
 });
 
 janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
+criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
 
 configuracao = criarConfiguracao({
   agentesVisiveis: () => [...estacoes.keys()],
+  aoRemover: (id) => integracao.removerLocal(id),
   nomeDe,
   servidorAtivo: () => integracao.servidorAtivo(),
 });

@@ -48,7 +48,7 @@ function el(tag, attrs = {}, ...filhos) {
   return e;
 }
 
-export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
+export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRemover = () => {} }) {
   const dlgEquipe = document.getElementById('dlg-equipe');
   const dlgRelatorio = document.getElementById('dlg-relatorio');
   for (const d of [dlgEquipe, dlgRelatorio]) {
@@ -199,6 +199,20 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
       }
     }
 
+    async function remover() {
+      if (!confirm(`Tirar ${nomeDe(id)} da equipe? A mesa some do escritório e ninguém mais passa tarefas para ele. As entregas antigas continuam guardadas.`)) return;
+      try {
+        const r = await fetch(`api/motores/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
+        estado = await r.json();
+        aoRemover(id);
+        selecionado = agentesVisiveis().find((x) => x !== id);
+        desenharEquipe();
+      } catch (erro) {
+        resultado.className = 'resultado falha'; resultado.textContent = `✗ ${erro.message}`;
+      }
+    }
+
     f.append(
       el('h3', {}, nomeDe(id)),
       campo('IA', provedor),
@@ -208,7 +222,8 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo }) {
       el('label', { class: 'linha' }, delegar, el('span', {}, 'Pode delegar tarefas para a equipe (Orquestrador)')),
       el('div', { class: 'acoes' },
         el('button', { type: 'button', class: 'secundario', onclick: testar }, 'Testar'),
-        el('button', { type: 'submit' }, 'Salvar')),
+        el('button', { type: 'submit' }, 'Salvar'),
+        id !== 'orquestrador' ? el('button', { type: 'button', class: 'perigo', onclick: remover }, 'Remover da equipe') : null),
       resultado,
     );
     atualizar();
