@@ -5,11 +5,17 @@
 // - Os arquivos que os agentes entregam (blocos ```arquivo: caminho```) viram um
 //   commit num branch e um pull request; ajustes da mesma entrega vão no mesmo PR.
 // - O CI de cada PR é acompanhado: falhou → o log volta para o mesmo agente
-//   corrigir (até 3 vezes); passou → merge automático (GITHUB_AUTO_MERGE=0 desliga).
+//   corrigir (até 3 vezes); passou → o QA revisa o código do PR (GITHUB_REVISAO=0
+//   desliga). Pediu mudanças → o agente corrige; aprovou → merge automático
+//   (GITHUB_AUTO_MERGE=0 desliga).
+// - Preview: se o repositório estiver ligado a um serviço de deploy (Vercel,
+//   Netlify, Cloudflare Pages…), o endereço de cada PR e o de produção (depois do
+//   merge) são lidos do GitHub e aparecem na entrega, na ficha e no Telegram.
 //
 // .env: GITHUB_TOKEN (fine-grained: Administration, Contents, Pull requests e
-// Workflows em Read and write), GITHUB_DONO (organização onde criar; padrão: a
-// conta do token), GITHUB_PREFIXO (prefixo do nome dos repositórios).
+// Workflows em Read and write; Actions, Commit statuses e Deployments em Read-only),
+// GITHUB_DONO (organização onde criar; padrão: a conta do token), GITHUB_PREFIXO
+// (prefixo do nome dos repositórios).
 
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -19,6 +25,9 @@ const MAX_ARQUIVOS = 80;
 const MAX_TAMANHO = 400_000;
 const MAX_CORRECOES = 3;
 const SEM_CI_MIN = 6; // sem nenhum check depois disso: o repositório não tem CI rodando
+const PRODUCAO_MIN = 20; // depois do merge, procura o deploy de produção por até 20 min
+const MAX_DIFF = 40_000; // quanto do diff vai para a revisão
+const DEPLOY = /vercel|netlify|cloudflare|pages|preview|deploy|render|railway/i;
 
 const CI = `name: CI
 on:
@@ -81,8 +90,14 @@ export function extrairArquivos(texto) {
   return [...arquivos].slice(0, MAX_ARQUIVOS).filter(([, c]) => c.length <= MAX_TAMANHO).map(([caminho, conteudo]) => ({ caminho, conteudo }));
 }
 
-export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorrecao, avisar, informar }) {
+// O QA responde à revisão com "VEREDITO: APROVADO" ou "VEREDITO: MUDANÇAS".
+export const pedeMudancas = (texto) => /VEREDITO\W*MUDAN/i.test(String(texto));
+const falhou = (r) => !r || r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
+
+// pedirRevisao({ cliente, agente, numero, url, texto, anexo }) → ordem para o revisor (ou null, sem revisor)
+export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorrecao, pedirRevisao, avisar, informar }) {
   const token = process.env.GITHUB_TOKEN;
+  const revisao = process.env.GITHUB_REVISAO !== '0';
   const arquivo = join(dadosDir, 'repositorios.json');
   const autoMerge = process.env.GITHUB_AUTO_MERGE !== '0';
   let repos = {}; // cliente → { dono, nome, url, padrao, ci }
@@ -199,7 +214,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
   // Uma entrega com arquivos de código vira commit + PR no repositório do projeto.
   async function publicarEntrega(ordem, indice) {
     const r = ordem.respostas[indice];
-    if (!ativo() || !ordem.cliente || !r || r.erro) return;
+    if (!ativo() || !ordem.cliente || !r || r.erro || ordem.origem?.revisaoPR) return; // revisão de PR não vira PR
     const arquivos = extrairArquivos(r.texto);
     if (!arquivos.length) return;
     try {
@@ -230,14 +245,15 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     }
   }
 
-  function marcar(pr, estado) {
+  function marcar(pr, estado, extra = {}) {
     pr.estado = estado;
+    Object.assign(pr, extra);
     // todas as entregas que foram para este PR (a original e as correções) mostram o mesmo estado
     for (const o of ordens) {
       if (o.cliente !== pr.cliente) continue;
       const dele = o.respostas.filter((x) => x.repo?.pr === pr.numero && x.repo.branch === pr.branch);
       if (!dele.length) continue;
-      for (const r of dele) r.repo.estado = estado;
+      for (const r of dele) Object.assign(r.repo, { estado }, pr.preview ? { preview: pr.preview } : {});
       mudou(o);
     }
   }
@@ -245,7 +261,8 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
   async function mesclar(pr, repo) {
     if (!autoMerge) { marcar(pr, 'aprovado'); return; }
     try {
-      await gh('PUT', `/repos/${repo.dono}/${repo.nome}/pulls/${pr.numero}/merge`, { merge_method: 'squash', commit_title: `${pr.agente}: PR #${pr.numero}` });
+      const m = await gh('PUT', `/repos/${repo.dono}/${repo.nome}/pulls/${pr.numero}/merge`, { merge_method: 'squash', commit_title: `${pr.agente}: PR #${pr.numero}` });
+      if (m.sha) Object.assign(pr, { mergeSha: m.sha, mescladoEm: new Date().toISOString() });
       await gh('DELETE', `/repos/${repo.dono}/${repo.nome}/git/refs/heads/${encodeURIComponent(pr.branch)}`).catch(() => {});
       marcar(pr, 'mesclado');
       cacheArvore.delete(pr.cliente);
@@ -257,42 +274,152 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     }
   }
 
-  // Acompanha o CI dos PRs abertos pelo escritório.
+  // Endereço publicado de um commit por um serviço de deploy ligado ao repositório
+  // (deployments do GitHub ou status de commit da Vercel/Netlify/Cloudflare…).
+  async function enderecoDeploy(repo, sha) {
+    const base = `/repos/${repo.dono}/${repo.nome}`;
+    try {
+      for (const d of (await gh('GET', `${base}/deployments?sha=${sha}&per_page=10`)) || []) {
+        const st = await gh('GET', `${base}/deployments/${d.id}/statuses?per_page=5`);
+        const ok = (st || []).find((x) => x.state === 'success' && (x.environment_url || x.target_url));
+        if (ok) return ok.environment_url || ok.target_url;
+      }
+    } catch { /* sem permissão de Deployments ou sem deploy */ }
+    try {
+      const { statuses = [] } = await gh('GET', `${base}/commits/${sha}/status`);
+      const ok = statuses.find((x) => x.state === 'success' && x.target_url && DEPLOY.test(x.context || ''));
+      if (ok) return ok.target_url;
+    } catch { /* sem status */ }
+    return null;
+  }
+
+  async function procurarPreview(pr, repo) {
+    if (pr.previewSha === pr.sha) return;
+    const url = await enderecoDeploy(repo, pr.sha);
+    if (!url) return;
+    const primeiro = !pr.preview;
+    pr.previewSha = pr.sha;
+    marcar(pr, pr.estado, { preview: url });
+    if (primeiro) informar?.(`🔎 Preview do PR #${pr.numero}: ${url}`);
+    await gravar();
+  }
+
+  // Depois do merge: o endereço de produção do projeto.
+  async function procurarProducao(pr, repo) {
+    const url = await enderecoDeploy(repo, pr.mergeSha);
+    if (url) {
+      repo.producao = url;
+      pr.producaoOk = true;
+      informar?.(`🌐 ${clientes.nomeDe?.(pr.cliente) || pr.cliente} atualizado no ar: ${url}`);
+      mudou();
+    } else if ((Date.now() - Date.parse(pr.mescladoEm)) / 60000 > PRODUCAO_MIN) {
+      pr.producaoOk = false; // não há deploy ligado ao repositório
+    } else return;
+    await gravar();
+  }
+
+  // O mesmo agente corrige no mesmo PR (CI falhou ou a revisão pediu mudanças).
+  function corrigir(pr, motivo, detalhes) {
+    if (pr.correcoes >= MAX_CORRECOES) {
+      marcar(pr, 'falhou');
+      avisar?.(`⚠️ ${motivo} no ${pr.url} depois de ${MAX_CORRECOES} correções. Precisa de um olhar humano.`);
+      return;
+    }
+    pr.correcoes++;
+    marcar(pr, 'corrigindo');
+    const ordem = ordens.find((x) => x.id === pr.ultimaOrdem);
+    const indice = ordem ? ordem.respostas.findLastIndex((x) => x.repo?.pr === pr.numero) : -1;
+    if (ordem && indice >= 0) {
+      pedirCorrecao({ ordemId: ordem.id, indice, texto: `${motivo} no pull request #${pr.numero} (correção ${pr.correcoes} de ${MAX_CORRECOES}). Corrija e entregue os arquivos alterados completos.\n\n${detalhes}` });
+    }
+  }
+
+  // CI verde: o QA lê o diff do PR antes do merge.
+  async function revisar(pr, repo) {
+    if (!revisao || !pedirRevisao) return mesclar(pr, repo);
+    const arquivos = await gh('GET', `/repos/${repo.dono}/${repo.nome}/pulls/${pr.numero}/files?per_page=100`);
+    let diff = '';
+    for (const [i, a] of (arquivos || []).entries()) {
+      const bloco = `### ${a.filename} (${a.status}, +${a.additions ?? 0} -${a.deletions ?? 0})\n\`\`\`diff\n${a.patch || '(sem diff: arquivo binário ou grande demais)'}\n\`\`\`\n\n`;
+      if (diff.length + bloco.length > MAX_DIFF) { diff += `(… e mais ${arquivos.length - i} arquivo(s) fora do limite)\n`; break; }
+      diff += bloco;
+    }
+    const ordemPR = ordens.find((x) => x.id === pr.ordemId);
+    const ordem = pedirRevisao({
+      cliente: pr.cliente, agente: pr.agente, numero: pr.numero, url: pr.url,
+      texto: `Revisão de código do PR #${pr.numero} de ${pr.agente}: "${(ordemPR?.ajuste?.original || ordemPR?.texto || '').split('\n')[0].slice(0, 200)}". O CI já passou.`,
+      anexo: `Revise o diff abaixo como revisor de código antes do merge. A PRIMEIRA linha da resposta deve ser exatamente "VEREDITO: APROVADO" ou "VEREDITO: MUDANÇAS".
+Peça MUDANÇAS só por problemas reais: bug, falha de segurança (injeção de SQL, segredo/senha no código, rota sem autenticação, dado sensível exposto), perda de dados, requisito do pedido não atendido ou código que não vai funcionar em produção. Estilo, nomes e melhorias opcionais vão como sugestões, sem bloquear.
+Em MUDANÇAS, liste cada problema com arquivo, o porquê e como corrigir. Não reescreva os arquivos: quem corrige é o autor.
+
+PEDIDO ORIGINAL:
+${(ordemPR?.ajuste?.original || ordemPR?.texto || '').slice(0, 3000)}
+
+DIFF DO PR ${pr.url}:
+${diff}`,
+    });
+    if (!ordem) return mesclar(pr, repo); // sem revisor na equipe
+    marcar(pr, 'revisando', { revisaoOrdem: ordem.id });
+    await gravar();
+  }
+
+  // A revisão do QA voltou: comenta no PR e decide (merge ou correção).
+  async function veredito(pr, repo) {
+    const o = ordens.find((x) => x.id === pr.revisaoOrdem);
+    const resp = o?.respostas.find((r) => !falhou(r));
+    if (!resp) {
+      if (!o || o.desistida) { pr.semRevisao = true; await mesclar(pr, repo); await gravar(); } // revisor fora do ar: o CI já passou
+      return;
+    }
+    const mudancas = pedeMudancas(resp.texto);
+    pr.revisaoOrdem = null;
+    await gh('POST', `/repos/${repo.dono}/${repo.nome}/pulls/${pr.numero}/reviews`, {
+      event: 'COMMENT',
+      body: `**Revisão de código — ${resp.agente}** (${mudancas ? '🔧 pediu mudanças' : '✅ aprovado'})\n\n${resp.texto.slice(0, 60000)}`,
+    }).catch((erro) => console.warn(`[github] não consegui comentar a revisão no PR #${pr.numero}: ${erro.message}`));
+    if (mudancas) {
+      informar?.(`🔧 ${resp.agente} pediu mudanças no PR #${pr.numero}: ${pr.url}`);
+      corrigir(pr, 'A revisão de código pediu mudanças', resp.texto.slice(0, 6000));
+    } else {
+      await mesclar(pr, repo);
+    }
+    await gravar();
+  }
+
+  // Acompanha os PRs abertos pelo escritório: CI, revisão, preview e produção.
   async function conferir() {
-    for (const pr of prs.filter((p) => p.estado === 'testando')) {
+    for (const pr of prs) {
       const repo = repos[pr.cliente];
       if (!repo) continue;
       try {
+        if (pr.estado === 'mesclado') {
+          if (pr.mergeSha && pr.producaoOk === undefined) await procurarProducao(pr, repo);
+          continue;
+        }
+        if (pr.estado === 'revisando') { await procurarPreview(pr, repo); await veredito(pr, repo); continue; }
+        if (pr.estado !== 'testando') continue;
+        await procurarPreview(pr, repo);
         const { check_runs: checks = [] } = await gh('GET', `/repos/${repo.dono}/${repo.nome}/commits/${pr.sha}/check-runs`);
         const minutos = (Date.now() - Date.parse(pr.desde)) / 60000;
         if (!checks.length) {
-          if (minutos > SEM_CI_MIN) await mesclar(pr, repo); // sem CI no repositório: segue
+          if (minutos > SEM_CI_MIN) await revisar(pr, repo); // sem CI no repositório: segue para a revisão
           continue;
         }
         if (checks.some((c) => c.status !== 'completed')) continue;
         const falhas = checks.filter((c) => !['success', 'skipped', 'neutral'].includes(c.conclusion));
-        if (!falhas.length) { await mesclar(pr, repo); continue; }
-        if (pr.correcoes >= MAX_CORRECOES) {
-          marcar(pr, 'falhou');
-          avisar?.(`⚠️ O CI do ${pr.url} continua falhando depois de ${MAX_CORRECOES} correções. Precisa de um olhar humano.`);
-          continue;
-        }
-        // pega o fim do log de cada falha e manda o mesmo agente corrigir no mesmo PR
+        if (!falhas.length) { await procurarPreview(pr, repo); await revisar(pr, repo); continue; }
+        // o fim do log de cada falha (Actions) ou o resumo do check (Vercel, Netlify…)
         const logs = [];
         for (const c of falhas.slice(0, 2)) {
-          const log = await gh('GET', `/repos/${repo.dono}/${repo.nome}/actions/jobs/${c.id}/logs`, null, { texto: true });
-          logs.push(`### ${c.name} (${c.conclusion})\n${(log || c.output?.summary || '').slice(-3500)}`);
+          const log = !c.app?.slug || c.app.slug === 'github-actions'
+            ? await gh('GET', `/repos/${repo.dono}/${repo.nome}/actions/jobs/${c.id}/logs`, null, { texto: true }) : '';
+          const resumo = [c.output?.title, c.output?.summary, c.output?.text].filter(Boolean).join('\n');
+          logs.push(`### ${c.name} (${c.conclusion})${c.details_url ? ` ${c.details_url}` : ''}\n${(log || resumo || '(sem log)').slice(-3500)}`);
         }
-        pr.correcoes++;
-        marcar(pr, 'corrigindo');
-        const ordem = ordens.find((x) => x.id === pr.ultimaOrdem);
-        const indice = ordem ? ordem.respostas.findLastIndex((x) => x.repo?.pr === pr.numero) : -1;
-        if (ordem && indice >= 0) {
-          pedirCorrecao({ ordemId: ordem.id, indice, texto: `O CI do pull request #${pr.numero} falhou (correção ${pr.correcoes} de ${MAX_CORRECOES}). Corrija o código para os testes passarem e entregue os arquivos alterados completos.\n\n${logs.join('\n\n')}` });
-        }
+        corrigir(pr, 'O CI falhou', `Faça os testes e o build passarem.\n\n${logs.join('\n\n')}`);
         await gravar();
       } catch (erro) {
-        console.error(`[github] CI do PR #${pr.numero}: ${erro.message}`);
+        console.error(`[github] PR #${pr.numero}: ${erro.message}`);
       }
     }
   }
@@ -301,7 +428,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     if (!ativo()) return;
     relogio ??= setInterval(() => conferir().catch(() => {}), Number(process.env.GITHUB_INTERVALO_MS) || 60000);
     relogio.unref?.();
-    console.log(`[github] ligado: cada projeto vira um repositório${autoMerge ? ', com merge automático quando o CI passa' : ''}`);
+    console.log(`[github] ligado: cada projeto vira um repositório${revisao ? ', o QA revisa cada PR' : ''}${autoMerge ? ', merge automático quando o CI passa' : ''}`);
   }
 
   const repoDe = (cliente) => repos[cliente] || null;

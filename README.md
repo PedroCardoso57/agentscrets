@@ -290,11 +290,22 @@ Com `GITHUB_TOKEN` no `.env`, o código que o time escreve deixa de ser só text
 2. **Entrega vira PR.** Os agentes escrevem os arquivos em blocos ```` ```ts arquivo: src/caminho.ts ````. Cada entrega com arquivos vira um commit numa branch `agentes/<agente>-<ordem>` e um pull request. Os agentes recebem a árvore atual do repositório, para continuar o que já existe.
 3. **Testes no GitHub Actions.** O CI instala, compila e roda os testes (Node e Python). Nada do código gerado roda no seu VPS.
 4. **Correção automática.** Se o CI falhar, o agente recebe o log do erro e corrige no mesmo PR (até 3 vezes). Depois disso, você é avisado.
-5. **Merge automático.** Com o CI verde, o PR é mesclado (squash) e a branch apagada. Com `GITHUB_AUTO_MERGE=0`, ele fica aprovado esperando você.
+5. **Revisão de código pelo QA.** Com o CI verde, o QA (ou `GITHUB_REVISOR`) lê o diff do PR e comenta no próprio PR. Ele só bloqueia por problemas reais (bug, segurança, perda de dados, requisito não atendido); aí o autor corrige no mesmo PR e o ciclo recomeça. CI e revisão somam no máximo 3 correções. `GITHUB_REVISAO=0` desliga a revisão.
+6. **Merge automático.** CI verde e revisão aprovada: o PR é mesclado (squash) e a branch apagada. Com `GITHUB_AUTO_MERGE=0`, ele fica aprovado esperando você.
 
-O cartão da entrega mostra o link do PR e o estado (testando, corrigindo, mesclado…), a ficha do cliente mostra o link do repositório e o Telegram avisa quando um PR abre e quando é mesclado.
+O cartão da entrega mostra o link do PR e o estado (testando, QA revisando, corrigindo, mesclado…), a ficha do cliente mostra o link do repositório e o Telegram avisa quando um PR abre, quando o QA pede mudanças e quando é mesclado.
 
-**Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write), mais **Actions** e **Commit statuses** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
+### Preview: ver o sistema funcionando
+
+Ligue os repositórios a um serviço de deploy que publica cada PR sozinho: **Cloudflare Pages** ou **Netlify** (os planos grátis permitem uso comercial; o grátis da Vercel não). Instale o app dele no GitHub com acesso a todos os repositórios. A partir daí:
+
+- cada PR ganha um endereço de preview, que aparece no cartão da entrega (🔎 ver preview) e no Telegram;
+- depois do merge, o endereço de produção aparece na ficha do cliente (No ar:) e no Telegram;
+- se o build do preview falhar, o erro volta para o agente corrigir, como o CI.
+
+O escritório só lê os endereços que o GitHub informa; o código gerado nunca roda no seu VPS. Esses serviços publicam sites e front-ends (React, Vue, páginas estáticas, funções). Um back-end com banco de dados precisa de um serviço próprio (ex.: Render, Railway, Fly.io), que também pode ser ligado ao repositório.
+
+**Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write), mais **Actions**, **Commit statuses** e **Deployments** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
 
 ## Entregas: tudo o que a equipe já produziu
 
