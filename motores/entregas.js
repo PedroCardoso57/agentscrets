@@ -15,7 +15,8 @@ function slug(texto) {
 
 const ehEntrega = (r) => r && !r.erro && !r.simulada && !/^(Erro:|Interrompida:)/.test(r.texto);
 
-export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo' }) {
+// aoNova(item, conteudo): chamada só para entregas novas (não no arquivamento das antigas nem ao regravar)
+export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', aoNova = () => {} }) {
   const pasta = join(dadosDir, 'entregas');
   const arquivoIndice = join(pasta, 'indice.json');
   let indice = []; // { chave, ordemId, indice, agente, de, para, motor, ms, em, pedido, trecho, nota, arquivo }
@@ -77,6 +78,7 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo' }
     if (!ehEntrega(r)) return;
     const chave = `${ordem.id}:${i}`;
     let item = indice.find((e) => e.chave === chave);
+    const nova = !item;
     if (!item) {
       // data e hora no fuso do escritório (sv-SE dá "AAAA-MM-DD HH:MM")
       const [dia, hm] = new Date(r.em).toLocaleString('sv-SE', { timeZone: FUSO, hour12: false }).split(' ');
@@ -90,8 +92,10 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo' }
     });
     const caminho = join(pasta, item.arquivo);
     await mkdir(join(caminho, '..'), { recursive: true });
-    await writeFile(caminho, markdown(ordem, r));
+    const conteudo = markdown(ordem, r);
+    await writeFile(caminho, conteudo);
     if (salvarJa) agendarIndice();
+    if (nova && salvarJa) aoNova({ ...item, texto: r.texto }, conteudo);
   }
 
   function filtrar({ q = '', agente = '' } = {}) {

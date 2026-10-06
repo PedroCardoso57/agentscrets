@@ -36,6 +36,7 @@ import { criarMotores } from './motores/index.js';
 import { criarDecisor } from './motores/decisor.js';
 import { criarDocumentacao } from './motores/documentacao.js';
 import { criarEntregas } from './motores/entregas.js';
+import { criarTelegram } from './motores/telegram.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -204,7 +205,8 @@ async function encaminhar({ para, texto, de = 'chefe', contexto }) {
   return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao });
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
-const entregas = criarEntregas({ dadosDir: DADOS_DIR });
+const telegram = criarTelegram({ dadosDir: DADOS_DIR, nomeDe: (id) => id.charAt(0).toUpperCase() + id.slice(1) });
+const entregas = criarEntregas({ dadosDir: DADOS_DIR, aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo }) });
 const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)) });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
@@ -454,6 +456,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
 await carregar();
 await documentacao.carregar();
 await entregas.carregar(ordens);
+telegram.iniciar();
 motores.iniciar(estado);
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {

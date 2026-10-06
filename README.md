@@ -209,6 +209,16 @@ dados/entregas/
 
 O arquivo traz agente, IA, data, quem pediu, tempo, a decisão do Crânio, a sua avaliação (👍 / 👎 regravam o arquivo), o pedido e a entrega. Erros e respostas simuladas não entram. Entregas feitas antes desta versão são arquivadas na primeira vez que o servidor sobe. No Docker, para copiar tudo para fora: `docker compose cp escritorio:/app/dados/entregas ./entregas`.
 
+### Recebendo as entregas no Telegram
+
+Cada entrega nova chega no seu Telegram, com um resumo na mensagem e o `.md` completo anexado.
+
+1. No Telegram, abra o **@BotFather**, mande `/newbot`, escolha um nome e um usuário terminado em `bot`. Ele responde com um **token**.
+2. No VPS, coloque no `.env`: `TELEGRAM_BOT_TOKEN=<o token>` e rode `docker compose up -d`.
+3. Abra o seu bot no Telegram e mande **/start**. Ele responde "✅ Escritório conectado!".
+
+O primeiro chat que mandar `/start` fica gravado em `dados/telegram.json` e mais ninguém entra; para trocar, apague esse arquivo e reinicie. Também dá para usar um grupo: adicione o bot ao grupo e mande `/start` lá. As entregas antigas não são reenviadas.
+
 ## Trocando a IA pela tela e comparando na prática
 
 - **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
