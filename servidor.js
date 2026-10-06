@@ -38,7 +38,7 @@ import { criarDocumentacao } from './motores/documentacao.js';
 import { criarEntregas } from './motores/entregas.js';
 import { criarTelegram } from './motores/telegram.js';
 import { criarClientes } from './motores/clientes.js';
-import { criarRotinas } from './motores/rotinas.js';
+import { criarRotinas, ontem } from './motores/rotinas.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -166,9 +166,10 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
 }
 
 // Cria uma ordem (do chefe pela página, ou de um agente que delega) e despacha.
-function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, cliente, ajuste }) {
+function criarOrdem({ para, texto, de = 'chefe', contexto, decisao, origem, cliente, ajuste, anexo }) {
   const ordem = { id: randomUUID().slice(0, 8), para, de, texto: texto.trim().slice(0, 4000), criadaEm: new Date().toISOString(), estado: 'pendente', entregue: [], respostas: [] };
   if (contexto) ordem.contexto = contexto.slice(0, 4000);
+  if (anexo) ordem.anexo = anexo.slice(0, 60000); // material longo para o agente (ex.: o que foi feito ontem)
   if (origem) ordem.origem = origem; // ex.: { telegram: { chat, msg } } para responder no mesmo lugar
   if (cliente && clientes.existe(cliente)) ordem.cliente = cliente; // a ficha do cliente vai junto para o agente
   if (ajuste) ordem.ajuste = ajuste; // refazer uma entrega: { ordemId, indice, original, anterior }
@@ -198,8 +199,8 @@ function descreverDecisao(d, ordem) {
 
 // Toda decisão passa pelo Crânio: ordens com agente indicado (pelo chefe ou por
 // quem delega) são avaliadas por ele antes de existir. Sem o Laya, seguem direto.
-async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente }) {
-  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem, cliente });
+async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente, anexo }) {
+  if (!decisor.ativo() || para === 'todos') return criarOrdem({ para, texto, de, contexto, origem, cliente, anexo });
   let decisao;
   try {
     decisao = await decisor.avaliar(texto, motores.equipe(), para, de);
@@ -207,18 +208,18 @@ async function encaminhar({ para, texto, de = 'chefe', contexto, origem, cliente
     console.warn(`[crânio] ${erro.message}`);
     decisao = { por: 'Laya', modo: 'indisponivel', motivo: erro.message.slice(0, 120), agente: para };
   }
-  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem, cliente });
+  return criarOrdem({ para: decisao.agente, texto, de, contexto, decisao, origem, cliente, anexo });
 }
 
 // Ordem do chefe (pela página ou pelo Telegram). para = id do agente, "todos" ou "auto" (o Laya escolhe).
-async function ordemDoChefe({ para, texto, origem, cliente }) {
+async function ordemDoChefe({ para, texto, origem, cliente, anexo }) {
   texto = texto.slice(0, 2000);
   if (cliente && !clientes.existe(cliente)) throw new Error(`cliente "${cliente}" não cadastrado`);
   // "auto" sem o Laya: vai para o Orquestrador (ou para todos, se não houver)
   if (para === 'auto' && !decisor.ativo()) para = motores.equipe().orquestrador ? 'orquestrador' : 'todos';
-  if (para !== 'auto') return encaminhar({ para, texto, origem, cliente });
+  if (para !== 'auto') return encaminhar({ para, texto, origem, cliente, anexo });
   const decisao = await decisor.decidir(texto, motores.equipe());
-  return criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente });
+  return criarOrdem({ para: decisao.agente, texto, decisao, origem, cliente, anexo });
 }
 
 // Ajuste: o mesmo agente refaz uma entrega dele, vendo o pedido original e o que entregou.
@@ -236,7 +237,38 @@ function pedirAjuste({ ordemId, indice, texto, origem }) {
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
 const clientes = criarClientes({ dadosDir: DADOS_DIR });
-const rotinas = criarRotinas({ dadosDir: DADOS_DIR, disparar: (r) => ordemDoChefe({ para: r.para, texto: r.texto, cliente: r.cliente, origem: { rotina: r.id } }) });
+const rotinas = criarRotinas({
+  dadosDir: DADOS_DIR,
+  disparar: (r) => ordemDoChefe({ para: r.para, texto: r.texto, cliente: r.cliente, origem: { rotina: r.id }, anexo: r.resumoOntem ? materialDoDia(ontem()) : undefined }),
+});
+
+// Tudo o que a equipe fez num dia, para o resumo diário: entregas (com trecho), avaliações, erros e o que ficou pendente.
+function materialDoDia(data) {
+  const doDia = (iso) => new Date(iso).toLocaleString('sv-SE', { timeZone: process.env.TZ || 'America/Sao_Paulo' }).startsWith(data);
+  const feitas = entregas.doDia(data);
+  const ordensDoDia = ordens.filter((o) => doDia(o.criadaEm));
+  const erros = ordens.flatMap((o) => o.respostas.filter((r) => r.erro && doDia(r.em)).map((r) => `- ${r.agente} em "${o.texto.slice(0, 120)}": ${r.texto.slice(0, 200)}`));
+  const pendentes = ordensDoDia.filter((o) => o.estado !== 'respondida').map((o) => `- ${o.para}: "${o.texto.slice(0, 150)}" (${o.estado})`);
+  const [a, m, d] = data.split('-');
+  const linhas = [
+    `Dia ${d}/${m}/${a}: ${ordensDoDia.length} ordem(ns), ${feitas.length} entrega(s), ${erros.length} erro(s).`,
+    '',
+    '## Entregas',
+    ...(feitas.length ? feitas.map((e, i) => [
+      `### ${i + 1}. ${e.agente}${e.cliente ? ` · cliente ${clientes.nomeDe(e.cliente)}` : ''}${e.de !== 'chefe' ? ` · pedido de ${e.de}` : ''}${e.ajuste ? ' · ajuste' : ''}${e.revisado ? ' · revisado' : ''}${e.nota === 1 ? ' · 👍 aprovada pelo chefe' : e.nota === -1 ? ' · 👎 reprovada pelo chefe' : ''}`,
+      `Pedido: ${e.pedido}`,
+      `Entrega (trecho): ${e.trecho.slice(0, 1200)}`,
+      `Arquivo: dados/entregas/${e.arquivo}`,
+    ].join('\n')) : ['Nenhuma entrega neste dia.']),
+    '',
+    '## Erros',
+    ...(erros.length ? erros : ['Nenhum.']),
+    '',
+    '## Ordens sem resposta',
+    ...(pendentes.length ? pendentes : ['Nenhuma.']),
+  ];
+  return linhas.join('\n');
+}
 const telegram = criarTelegram({
   dadosDir: DADOS_DIR,
   nomeDe: (id) => id.charAt(0).toUpperCase() + id.slice(1),

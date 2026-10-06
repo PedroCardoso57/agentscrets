@@ -210,6 +210,8 @@ Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente bu
 ### 🗓 Rotinas
 Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
 
+**☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Redator, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
+
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
 1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;

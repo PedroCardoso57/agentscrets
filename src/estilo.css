@@ -286,3 +286,4 @@ dialog button.link { background: none; border: none; color: #8fb4ff; cursor: poi
   .cfg-grade.rotinas { grid-template-columns: 1fr; }
   #comando #cliente-ordem { max-width: 110px; }
 }
+.atalho-resumo { font: inherit; font-size: 12px; margin-bottom: 12px; padding: 7px 12px; border-radius: 8px; cursor: pointer; color: #ffe9a8; background: #f4d35e14; border: 1px dashed #f4d35e88; }

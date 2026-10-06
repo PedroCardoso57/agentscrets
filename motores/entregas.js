@@ -143,6 +143,12 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
     return partes.join('\n\n---\n\n');
   }
 
-  return { carregar, registrar, listar, ler, exportar };
+  // Entregas de um dia ('AAAA-MM-DD' no fuso do escritório), da mais antiga para a mais nova.
+  function doDia(data) {
+    return indice.filter((e) => new Date(e.em).toLocaleString('sv-SE', { timeZone: FUSO }).startsWith(data))
+      .sort((a, b) => (a.em < b.em ? -1 : 1));
+  }
+
+  return { carregar, registrar, listar, ler, exportar, doDia };
 }
 
