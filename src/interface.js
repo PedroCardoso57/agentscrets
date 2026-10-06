@@ -17,6 +17,28 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
   }
   for (const a of abas) a.addEventListener('click', () => mostrarAba(a.dataset.aba));
 
+  // painel redimensionável: arraste a borda esquerda (a largura fica guardada neste navegador)
+  const raiz = document.documentElement;
+  const LARGURA = { min: 300, max: 680 };
+  const aplicarLargura = (px) => raiz.style.setProperty('--painel-largura', `${Math.round(Math.min(LARGURA.max, Math.max(LARGURA.min, px)))}px`);
+  try { const salva = Number(localStorage.getItem('painel-largura')); if (salva) aplicarLargura(salva); } catch { /* sem armazenamento */ }
+  const alca = Object.assign(document.createElement('div'), { className: 'alca-painel', title: 'Arraste para mudar a largura do painel' });
+  document.getElementById('painel').appendChild(alca);
+  alca.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    alca.setPointerCapture(ev.pointerId);
+    document.body.classList.add('redimensionando');
+    const mover = (e) => aplicarLargura(window.innerWidth - e.clientX - 16);
+    const soltar = () => {
+      alca.removeEventListener('pointermove', mover);
+      document.body.classList.remove('redimensionando');
+      try { localStorage.setItem('painel-largura', parseInt(getComputedStyle(raiz).getPropertyValue('--painel-largura'), 10)); } catch { /* sem armazenamento */ }
+    };
+    alca.addEventListener('pointermove', mover);
+    alca.addEventListener('pointerup', soltar, { once: true });
+  });
+  alca.addEventListener('dblclick', () => { raiz.style.removeProperty('--painel-largura'); try { localStorage.removeItem('painel-largura'); } catch { /* sem armazenamento */ } });
+
   function contador(nome, valor) {
     const el = document.querySelector(`[data-contador="${nome}"]`);
     if (el) el.textContent = valor ? String(valor) : '';
@@ -104,7 +126,7 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
     modoLista = lista;
     document.body.classList.toggle('modo-lista', lista);
     botaoModo.dataset.rotulo = lista ? 'Ver o escritório 3D' : 'Modo lista (mais leve)';
-    botaoModo.querySelector('span').textContent = lista ? '🏢' : '☰';
+    botaoModo.classList.toggle('modo-lista-ativo', lista); // mostra o ícone do prédio para voltar ao 3D
     botaoModo.classList.toggle('ativo', lista);
     if (salvar) { try { localStorage.setItem(CHAVE_MODO, lista ? '1' : '0'); } catch { /* sem armazenamento */ } }
     aoMudarModo(lista);

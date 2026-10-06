@@ -492,3 +492,124 @@ dialog button.link { background: none; border: none; color: #ff8a92; cursor: poi
 .lista-erros .pedido { margin-top: 3px; color: var(--suave); }
 .lista-erros .pedido button { font: inherit; font-size: 11px; color: #ff8a92; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
 .lista-erros pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #ffd0d3; max-height: 180px; overflow: auto; }
+
+/* =====================================================================
+   Visual 2: painel redimensionável, avatares, ícones, barra e topo
+   ===================================================================== */
+:root { --painel-largura: 380px; }
+svg.icone { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* barra lateral: ícones de linha, mesmo peso */
+#barra button { color: #c9c9d1; }
+#barra button:hover, #barra button.ativo { color: #fff; }
+#barra button svg.icone { width: 20px; height: 20px; }
+#alternar-modo .predio, #alternar-modo.modo-lista-ativo .lista { display: none; }
+#alternar-modo.modo-lista-ativo .predio { display: inline; }
+
+/* topo: um bloco só com os números do dia */
+#hoje { gap: 0; flex: 0 1 auto; margin: 0 auto; padding: 3px; border-radius: 99px; background: var(--painel); border: 1px solid var(--borda); backdrop-filter: blur(10px); pointer-events: auto; }
+#hoje .kpi { background: none; border: none; backdrop-filter: none; padding: 5px 12px; align-items: center; border-radius: 99px; position: relative; }
+#hoje .kpi + .kpi::before { content: ''; position: absolute; left: 0; top: 25%; bottom: 25%; width: 1px; background: var(--borda); }
+#hoje .kpi svg.icone { width: 15px; height: 15px; color: var(--suave); align-self: center; }
+#hoje .kpi.ativo svg.icone { color: var(--trabalhando); }
+#hoje .kpi.alerta svg.icone { color: var(--erro); }
+#hoje button.kpi:hover { background: #ffffff0d; }
+#conexao { font-weight: 600; backdrop-filter: blur(10px); }
+
+/* painel lateral */
+#painel { width: var(--painel-largura); top: 64px; bottom: 16px; }
+.alca-painel { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
+.alca-painel::after { content: ''; position: absolute; left: 2px; top: 50%; height: 44px; width: 3px; margin-top: -22px; border-radius: 3px; background: #ffffff1f; opacity: 0; transition: opacity .2s; }
+#painel:hover .alca-painel::after, body.redimensionando .alca-painel::after { opacity: 1; }
+body.redimensionando { cursor: ew-resize; user-select: none; }
+#painel .abas { padding: 10px 10px 0; gap: 2px; border-bottom: 1px solid var(--borda); }
+#painel .aba { border-radius: 9px 9px 0 0; padding: 9px 10px 10px; }
+#painel .aba.ativa { background: none; box-shadow: inset 0 -2px 0 var(--marca); }
+#painel .conteudo-aba { padding: 12px; }
+
+/* filtros em uma linha, rolando de lado */
+.filtros-ordens { flex-wrap: nowrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.filtros-ordens .trilho-filtros { flex: 1; min-width: 0; display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(90deg, #000 88%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); padding-right: 14px; }
+.filtros-ordens .trilho-filtros::-webkit-scrollbar { display: none; }
+.filtros-ordens .filtro { flex: none; white-space: nowrap; }
+.filtros-ordens .acoes-filtros { flex: none; display: flex; gap: 2px; }
+.filtros-ordens .icone-filtro { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; cursor: pointer; color: var(--suave); background: none; border: 1px solid transparent; }
+.filtros-ordens .icone-filtro:hover { color: var(--texto); background: #ffffff0d; border-color: var(--borda); }
+.filtros-ordens .icone-filtro svg.icone { width: 17px; height: 17px; }
+.filtros-ordens .marcar-vistas { color: var(--trabalhando); }
+
+/* avatares */
+.avatar { flex: none; position: relative; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 800; letter-spacing: .02em; color: #fff; text-shadow: 0 1px 2px #0005; box-shadow: inset 0 0 0 1px #ffffff26, 0 2px 6px #0004; }
+.avatar.mini { width: 18px; height: 18px; border-radius: 6px; font-size: 8px; }
+
+/* cartões de ordem: mais respiro e hierarquia */
+#lista-ordens { gap: 10px; }
+#lista-ordens > li { font-size: 12.5px; padding: 12px 12px 12px 14px; border-radius: 13px; border-left-width: 1px; position: relative; overflow: hidden; }
+#lista-ordens > li::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--cor, var(--borda)); opacity: .9; }
+#lista-ordens > li:hover { background: #ffffff0a; }
+#lista-ordens .cab { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; color: var(--texto); }
+#lista-ordens .cab .quem-cab { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+#lista-ordens .cab .quem-cab b { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lista-ordens .cab .quem-cab small { font-size: 11px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lista-ordens .chip { align-self: flex-start; font-size: 10.5px; padding: 3px 8px; }
+#lista-ordens > li > .texto { font-size: 13.5px; font-weight: 500; line-height: 1.45; color: #ececef; }
+#lista-ordens > li.recolhido .cab { margin-bottom: 6px; }
+#lista-ordens .marcas { margin: 6px 0 0; }
+#lista-ordens .selo-nova { font-size: 8.5px; padding: 2px 5px; }
+#lista-ordens .resp { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: #0000003a; border: 1px solid #ffffff0a; line-height: 1.45; }
+#lista-ordens .tarefa-plano > summary { align-items: center; }
+#lista-ordens .tarefa-plano > summary .avatar.mini { margin-right: 1px; }
+#lista-ordens .tarefa-plano { padding: 7px 9px; border-left-width: 2px; }
+#lista-ordens .plano { margin-top: 10px; }
+#lista-ordens .plano .trilho { flex-basis: 90px; height: 6px; }
+
+/* equipe com avatar e bolinha de status */
+#lista-agentes li { grid-template-columns: 36px 1fr; gap: 2px 12px; padding: 11px 12px; border-left-width: 1px; }
+#lista-agentes li .avatar { grid-row: span 3; width: 36px; height: 36px; border-radius: 11px; align-self: start; }
+#lista-agentes .avatar .bolinha { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 2px var(--painel-forte); }
+
+/* avisos no canto de baixo, sem cobrir a cena */
+#avisos { top: auto; bottom: 92px; left: calc(var(--barra) + 24px); transform: none; width: min(380px, calc(100% - 32px)); flex-direction: column-reverse; }
+@keyframes entrar { from { opacity: 0; transform: translateY(8px); } }
+@keyframes sair { to { opacity: 0; transform: translateY(8px); } }
+
+/* barra de ordens: o texto é o principal; para quem e cliente viram chips */
+#comando { right: calc(var(--painel-largura) + 32px); padding: 7px; gap: 6px; border-radius: 16px; }
+#comando .quem { padding: 0; gap: 0; position: relative; }
+#comando .coroa { position: absolute; left: 10px; font-size: 12px; pointer-events: none; }
+#comando select {
+  appearance: none; -webkit-appearance: none; font-size: 12px; font-weight: 600; padding: 8px 26px 8px 26px; border-radius: 99px;
+  background: #ffffff0d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center / 12px;
+  max-width: 160px; cursor: pointer;
+}
+#comando #cliente-ordem { padding-left: 12px; max-width: 150px; }
+#comando input { font-size: 14px; padding: 11px 14px; border-radius: 12px; background: #00000033; min-width: 200px; }
+#comando button[type="submit"] { border-radius: 12px; padding: 11px 20px; }
+
+body.modo-lista #comando { right: 16px; }
+
+@media (max-width: 760px) {
+  #hoje { margin: 0; overflow-x: auto; }
+  #painel { width: auto; bottom: 182px; }
+  .alca-painel { display: none; }
+  #comando { right: 8px; }
+  #comando select { max-width: none; }
+  #avisos { left: 8px; right: 8px; width: auto; bottom: 190px; }
+}
+
+/* etiquetas da cena: sobem quando se cruzam, balões curtos, tarefa só de perto */
+.etiqueta > * { translate: 0 var(--desvio, 0px); transition: translate .25s ease-out; }
+.etiqueta .placa {
+  font-size: 11px; padding: 3px 10px 3px 8px; letter-spacing: .01em;
+  background: rgba(12, 12, 16, 0.78); border-color: #ffffff1f; box-shadow: 0 2px 8px #0006;
+  backdrop-filter: blur(4px);
+}
+.etiqueta .balao {
+  max-width: 200px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  border-radius: 10px; padding: 6px 10px; font-weight: 600;
+}
+.etiqueta.longe .balao:not(.fala):not(.erro) { opacity: 0; transform: translateY(4px); }
+#lista-ordens .arquivos-resp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+#lista-ordens .arquivos-resp .arquivo { font-size: 10.5px; font-weight: 600; padding: 2px 7px 2px 6px; border-radius: 6px; background: #ffffff10; border: 1px solid var(--borda); color: #d4d4d8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+#lista-ordens .arquivos-resp .arquivo::before { content: '▤ '; color: var(--suave); }
+#lista-ordens .arquivos-resp .ver-mais { margin-left: 2px; }

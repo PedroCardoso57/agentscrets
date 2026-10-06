@@ -25,7 +25,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; // cores mais suaves nas luzes fortes
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.12;
 container.appendChild(renderer.domElement);
 
 const rotulos = new CSS2DRenderer();
@@ -49,7 +49,9 @@ cena.add(hemi);
 const sol = new THREE.DirectionalLight('#fff1d6', 1.6);
 sol.castShadow = true;
 sol.shadow.mapSize.set(2048, 2048);
-sol.shadow.bias = -0.0005;
+sol.shadow.bias = -0.0004;
+sol.shadow.normalBias = 0.02;
+sol.shadow.radius = 4;
 cena.add(sol, sol.target);
 
 // ---------- interface em volta da cena ----------
@@ -91,9 +93,9 @@ const vida = new Vida({
     if (!e || e.estado !== 'ocioso') return;
     const balao = e.etiqueta.element.querySelector('.balao');
     balao.textContent = texto;
-    balao.classList.add('visivel');
+    balao.classList.add('visivel', 'fala');
     clearTimeout(e.timerPapo);
-    e.timerPapo = setTimeout(() => { if (e.estado === 'ocioso') balao.classList.remove('visivel'); }, 3800);
+    e.timerPapo = setTimeout(() => { if (e.estado === 'ocioso') balao.classList.remove('visivel', 'fala'); }, 3800);
   },
 });
 let sala = null;
@@ -187,8 +189,10 @@ function montarPainel() {
   if (decisorAtivo) destinatario.prepend(new Option('🔮 Crânio decide (Laya)', 'auto'));
   for (const [id, e] of estacoes) {
     const li = document.createElement('li');
-    li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
+    li.innerHTML = '<span class="avatar"><i class="bolinha"></i></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
     li.querySelector('.nome span').textContent = e.agente.nome;
+    li.querySelector('.avatar').prepend(iniciais(e.agente.nome));
+    li.querySelector('.avatar').style.background = e.agente.cor;
     li.style.setProperty('--cor', e.agente.cor);
     e.item = li;
     atualizarSubtitulo(e);
@@ -218,13 +222,20 @@ function selecionar(id) {
   textoOrdem.focus({ preventScroll: true });
 }
 
+// Balão curto: a primeira frase, sem blocos de código
+function resumoFala(texto, max = 90) {
+  const limpo = String(texto).split('```')[0].split('\n').map((l) => l.replace(/^[#>*\-\s]+/, '').trim()).find(Boolean) || '';
+  return limpo.length > max ? `${limpo.slice(0, max - 1).trimEnd()}…` : limpo;
+}
+
 function mostrarStatus(id) {
   const e = estacoes.get(id);
   const { cor, rotulo } = STATUS[e.estado];
   const balao = e.etiqueta.element.querySelector('.balao');
   const respondendo = e.resposta && performance.now() < e.respostaAte;
-  balao.textContent = respondendo ? `💬 ${e.resposta}` : e.tarefa || '';
+  balao.textContent = respondendo ? `💬 ${resumoFala(e.resposta)}` : resumoFala(e.tarefa || '', 70);
   balao.classList.toggle('visivel', respondendo || (Boolean(e.tarefa) && e.estado !== 'ocioso'));
+  balao.classList.toggle('fala', Boolean(respondendo)); // falas aparecem mesmo de longe
   balao.classList.toggle('erro', e.estado === 'erro');
   e.etiqueta.element.querySelector('.placa i').style.background = cor;
   e.item.querySelector('.bolinha').style.background = cor;
@@ -251,7 +262,7 @@ let animacaoCamera = null;
 function enquadrarTudo() {
   const { centro, largura, profundidade } = sala;
   // mira um pouco à direita do centro: a copa e a área de reunião (onde a equipe faz as pausas) ficam desse lado
-  irPara(new THREE.Vector3(centro.x + 1.2, 0.6, centro.z + 0.3), new THREE.Vector3(centro.x + largura * 0.3, Math.max(largura, profundidade) * 0.7, centro.z + profundidade * 1.05));
+  irPara(new THREE.Vector3(centro.x - 0.3, 0.3, centro.z + 0.1), new THREE.Vector3(centro.x + largura * 0.22, Math.max(largura, profundidade) * 0.66, centro.z + profundidade * 1.02));
 }
 
 // câmera na mesa do chefe, de frente para a bola de cristal
@@ -357,6 +368,13 @@ let registroErros = null; // registro de erros (criado depois da integração)
 const expandidas = new Set(); // respostas abertas com "ver mais"
 const todasOrdens = () => [...ordensVistas.values()].map((v) => v.ordem);
 const corDe = (id) => estacoes.get(id)?.agente.cor || 'var(--marca)';
+// "Tech Lead" → TL, "Back-end" → BE, "DevOps" → DO, "Requisitos" → RE
+function iniciais(nome) {
+  const partes = String(nome).split(/[\s\-/]+/).filter(Boolean);
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  const maiusculas = String(nome).replace(/[^A-ZÀ-Ý]/g, '');
+  return (maiusculas.length >= 2 ? maiusculas : String(nome)).slice(0, 2).toUpperCase();
+}
 function horaCurta(iso) {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString()
@@ -389,7 +407,7 @@ const SITUACAO = {
   concluida: { rotulo: '✅ concluída', classe: 'concluida' },
 };
 const FILTROS = [
-  ['novas', 'Novas'], ['andamento', 'Em andamento'], ['problema', 'Precisa de você'], ['concluidas', 'Concluídas'], ['todas', 'Todas'],
+  ['novas', 'Novas'], ['andamento', 'Andamento'], ['problema', 'Atenção'], ['concluidas', 'Concluídas'], ['todas', 'Todas'],
 ];
 const PR_ABERTO = ['testando', 'revisando', 'corrigindo'];
 const PR_PROBLEMA = ['falhou', 'conflito'];
@@ -476,10 +494,26 @@ function blocoResposta(o, r, indice) {
   resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
   resp.querySelector('b').textContent = nomeDe(r.agente);
   const corpoResp = resp.querySelector('.corpo-resp');
-  corpoResp.textContent = r.texto + (r.simulada ? ' (simulação)' : '');
-  // respostas longas ficam recolhidas, com "ver mais"
+  // código entregue: o texto mostra só a explicação, e os arquivos viram etiquetas ("ver código" mostra tudo)
   const chaveResp = `${o.id}:${indice}`;
-  if (r.texto.length > 280) {
+  const blocos = [...r.texto.matchAll(/```[^\n]*\n[\s\S]*?```/g)];
+  const verCodigo = expandidas.has(`${chaveResp}:codigo`);
+  const explicacao = blocos.length && !verCodigo ? r.texto.replace(/```[^\n]*\n[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim() : r.texto;
+  corpoResp.textContent = explicacao + (r.simulada ? ' (simulação)' : '');
+  if (blocos.length) {
+    const arquivos = document.createElement('div');
+    arquivos.className = 'arquivos-resp';
+    for (const b of blocos.slice(0, 12)) {
+      const nome = (b[0].match(/(?:arquivo|file|caminho|path)\s*[:=]\s*([^\n`]+)/i)?.[1] || b[0].match(/^```(\w+)/)?.[1] || 'código').trim();
+      arquivos.appendChild(Object.assign(document.createElement('span'), { className: 'arquivo', textContent: nome.split('/').pop(), title: nome }));
+    }
+    const alternar = Object.assign(document.createElement('button'), { type: 'button', className: 'ver-mais', textContent: verCodigo ? 'esconder código' : `ver código (${blocos.length})` });
+    alternar.onclick = (ev) => { ev.stopPropagation(); const k = `${chaveResp}:codigo`; if (expandidas.has(k)) expandidas.delete(k); else expandidas.add(k); renderizarOrdens(); };
+    arquivos.appendChild(alternar);
+    corpoResp.after(arquivos);
+  }
+  // respostas longas ficam recolhidas, com "ver mais"
+  if (explicacao.length > 280) {
     const aberta = expandidas.has(chaveResp);
     corpoResp.classList.toggle('recolhida', !aberta);
     const verMais = Object.assign(document.createElement('button'), { type: 'button', className: 'ver-mais', textContent: aberta ? 'ver menos' : 'ver mais' });
@@ -557,7 +591,9 @@ function blocoTarefa(f, rotulo) {
   d.open = abertasNaMao.get(`t:${f.id}`) ?? (f.consolidacao ? true : ['problema', 'tentando'].includes(situacaoDe(f)));
   d.addEventListener('toggle', () => abertasNaMao.set(`t:${f.id}`, d.open));
   const s = document.createElement('summary');
-  s.innerHTML = '<span class="estado"></span><b></b><span class="txt"></span>';
+  s.innerHTML = '<span class="estado"></span><span class="avatar mini"></span><b></b><span class="txt"></span>';
+  s.querySelector('.avatar').textContent = iniciais(nomeDe(f.para));
+  s.querySelector('.avatar').style.background = corDe(f.para);
   s.querySelector('.estado').textContent = SITUACAO[situacaoDe(f)].rotulo.split(' ')[0];
   s.querySelector('.estado').title = SITUACAO[situacaoDe(f)].rotulo;
   s.querySelector('b').textContent = rotulo || nomeDe(f.para);
@@ -587,14 +623,21 @@ function desenharFiltros(cartoes) {
     b.onclick = () => { filtroOrdens = f; memoria.filtro = f; guardarMemoria(); renderizarOrdens(); };
     barraFiltros.appendChild(b);
   }
-  const reg = Object.assign(document.createElement('button'), { type: 'button', className: 'filtro registro-erros', textContent: '🗒 registro de erros', title: 'Todas as mensagens de erro' });
+  const acoes = Object.assign(document.createElement('span'), { className: 'acoes-filtros' });
+  const reg = Object.assign(document.createElement('button'), { type: 'button', className: 'icone-filtro registro-erros', title: 'Registro de erros', ariaLabel: 'Registro de erros' });
+  reg.innerHTML = '<svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
   reg.onclick = () => registroErros?.abrir();
-  barraFiltros.appendChild(reg);
   if (cartoes.some(ehNova)) {
-    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'filtro marcar-vistas', textContent: '✓ marcar como vistas' });
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'icone-filtro marcar-vistas', title: 'Marcar todas como vistas', ariaLabel: 'Marcar todas como vistas' });
+    b.innerHTML = '<svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg>';
     b.onclick = () => { for (const o of cartoes) memoria.vistas[o.id] = respostasDaFamilia(o); guardarMemoria(); renderizarOrdens(); };
-    barraFiltros.appendChild(b);
+    acoes.appendChild(b);
   }
+  acoes.appendChild(reg);
+  const trilho = document.createElement('div');
+  trilho.className = 'trilho-filtros';
+  trilho.append(...barraFiltros.querySelectorAll('.filtro'));
+  barraFiltros.append(trilho, acoes);
 }
 
 function renderizarOrdens() {
@@ -618,14 +661,17 @@ function renderizarOrdens() {
     // aberto: o que você abriu; senão, o que ainda pede atenção
     const aberto = abertasNaMao.get(o.id) ?? (nova || situacao !== 'concluida');
     li.classList.toggle('recolhido', !aberto);
-    li.innerHTML = '<div class="cab"><b></b><span class="hora"></span><span class="chip"></span></div><div class="texto"></div>';
-    li.querySelector('.hora').textContent = horaCurta(o.criadaEm);
-    li.querySelector('.cab b').textContent = o.de && o.de !== 'chefe' ? `${nomeDe(o.de)} → ${nomeDe(o.para)}` : `Você → ${nomeDe(o.para)}`;
+    li.innerHTML = '<div class="cab"><span class="avatar"></span><div class="quem-cab"><b></b><small></small></div><span class="chip"></span></div><div class="texto"></div>';
+    const avatar = li.querySelector('.avatar');
+    avatar.textContent = iniciais(nomeDe(o.para));
+    avatar.style.background = corDe(o.para);
+    li.querySelector('.cab b').textContent = o.para === 'todos' ? 'Toda a equipe' : nomeDe(o.para);
+    li.querySelector('.cab small').textContent = [o.de && o.de !== 'chefe' ? `de ${nomeDe(o.de)}` : 'sua ordem', horaCurta(o.criadaEm), o.cliente ? nomeCliente(o.cliente) : null].filter(Boolean).join(' · ');
     const chip = li.querySelector('.chip');
     const simulada = o.local || o.respostas.some((r) => r.simulada);
     chip.textContent = simulada && situacao !== 'concluida' ? 'simulação' : SITUACAO[situacao].rotulo;
     chip.classList.add(SITUACAO[situacao].classe);
-    if (nova) li.querySelector('.cab').prepend(Object.assign(document.createElement('span'), { className: 'selo-nova', textContent: 'NOVA' }));
+    if (nova) li.querySelector('.cab b').append(Object.assign(document.createElement('span'), { className: 'selo-nova', textContent: 'NOVA' }));
     li.querySelector('.texto').textContent = o.texto;
     // clicar no cabeçalho abre/fecha e marca como visto
     li.querySelector('.cab').onclick = () => { abertasNaMao.set(o.id, !aberto); marcarVista(o); renderizarOrdens(); };
@@ -633,7 +679,7 @@ function renderizarOrdens() {
 
     // de onde veio a ordem
     const marcas = [
-      o.cliente ? `👤 ${nomeCliente(o.cliente)}${o.clienteReconhecido ? ' (reconhecido no pedido)' : ''}` : null,
+      o.cliente && o.clienteReconhecido ? `👤 cliente reconhecido no pedido` : null,
       o.ajuste ? '↩ ajuste' : null,
       o.texto.startsWith('Replanejar:') ? '🔀 replanejamento' : null,
       o.origem?.rotina ? '🗓 rotina' : null,
@@ -954,6 +1000,57 @@ camera.position.copy(animacaoCamera.posicao).add(new THREE.Vector3(3, 3, 3));
 controles.target.copy(animacaoCamera.alvo);
 animacaoCamera.de = { alvo: controles.target.clone(), pos: camera.position.clone() };
 
+// Em telas largas, o centro da imagem fica no meio do espaço livre entre a barra de ícones e o painel.
+const painelLateral = document.getElementById('painel');
+let deslocamentoAtual = null;
+function ajustarEnquadramento(forcar = true) {
+  const largo = innerWidth > 760 && !painelLateral.hidden;
+  const desloc = largo ? Math.round((painelLateral.offsetWidth + 32 - 80) / 2) : 0;
+  if (!forcar && desloc === deslocamentoAtual) return;
+  deslocamentoAtual = desloc;
+  camera.aspect = innerWidth / innerHeight;
+  if (desloc) camera.setViewOffset(innerWidth, innerHeight, desloc, 0, innerWidth, innerHeight);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+ajustarEnquadramento();
+setInterval(() => ajustarEnquadramento(false), 400); // o painel pode mudar de largura (arrastando a borda)
+
+// Etiquetas sem se sobrepor: quem fica por trás sobe um pouco. E de longe só aparecem
+// os nomes e as falas; o balão com a tarefa aparece quando a câmera chega perto.
+const posEtiqueta = new THREE.Vector3();
+function arrumarEtiquetas() {
+  const itens = [];
+  for (const e of estacoes.values()) {
+    const el = e.etiqueta.element;
+    e.etiqueta.getWorldPosition(posEtiqueta);
+    el.classList.toggle('longe', camera.position.distanceTo(posEtiqueta) > 13);
+    const placa = el.querySelector('.placa');
+    const r = placa.getBoundingClientRect();
+    if (!r.width) continue;
+    const desvio = Number(el.dataset.desvio || 0);
+    itens.push({ el, x1: r.left, x2: r.right, y1: r.top - desvio, y2: r.bottom - desvio, dist: camera.position.distanceTo(posEtiqueta) });
+  }
+  itens.sort((a, b) => a.dist - b.dist); // os mais perto ficam no lugar
+  const colocados = [];
+  for (const it of itens) {
+    let y1 = it.y1, y2 = it.y2;
+    for (let volta = 0; volta < 6; volta++) {
+      const bate = colocados.find((c) => it.x1 < c.x2 + 4 && it.x2 > c.x1 - 4 && y1 < c.y2 + 2 && y2 > c.y1 - 2);
+      if (!bate) break;
+      const sobe = y2 - (bate.y1 - 3);
+      y1 -= sobe; y2 -= sobe;
+    }
+    const desvio = Math.round(y1 - it.y1);
+    if (Number(it.el.dataset.desvio || 0) !== desvio) {
+      it.el.dataset.desvio = desvio;
+      it.el.style.setProperty('--desvio', `${desvio}px`);
+    }
+    colocados.push({ x1: it.x1, x2: it.x2, y1, y2 });
+  }
+}
+let acumEtiquetas = 0;
+
 const relogio = new THREE.Clock();
 let acumTela = 0;
 function quadro() {
@@ -992,19 +1089,13 @@ function quadro() {
   controles.update();
   renderer.render(cena, camera);
   rotulos.render(cena, camera);
+  acumEtiquetas += dt;
+  if (acumEtiquetas > 0.15) { acumEtiquetas = 0; arrumarEtiquetas(); }
   requestAnimationFrame(quadro);
 }
 quadro();
 setInterval(atualizarHorario, 30000);
 
-// Em telas largas, desloca o centro da imagem para a esquerda do painel lateral.
-function ajustarEnquadramento() {
-  camera.aspect = innerWidth / innerHeight;
-  if (innerWidth > 640) camera.setViewOffset(innerWidth, innerHeight, 150, 0, innerWidth, innerHeight);
-  else camera.clearViewOffset();
-  camera.updateProjectionMatrix();
-}
-ajustarEnquadramento();
 
 addEventListener('resize', () => {
   ajustarEnquadramento();
