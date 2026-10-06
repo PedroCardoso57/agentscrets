@@ -290,6 +290,7 @@ function renderizarOrdens() {
       const d = document.createElement('div');
       d.className = 'decisao';
       d.textContent = textoDecisao(o.decisao);
+      if (o.decisao.ranking) d.title = `Como o Crânio pesou: ${o.decisao.ranking.map((x) => `${nomeDe(x.id)} ${Math.round(x.p * 100)}%`).join(' · ')}`;
       d.classList.toggle('alerta', ['alertou', 'redirecionou', 'indisponivel'].includes(o.decisao.modo));
       li.appendChild(d);
     }

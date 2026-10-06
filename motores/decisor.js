@@ -12,7 +12,7 @@ const DESCRICAO_ORQUESTRADOR = 'pedidos grandes, campanhas, projetos ou planos q
 export function criarDecisor() {
   const url = () => (process.env.LAYA_URL || '').replace(/\/$/, '');
   // abaixo desta certeza, o pedido vai para o Orquestrador em vez de arriscar o agente errado
-  const confiancaMinima = () => Number(process.env.LAYA_CONFIANCA_MINIMA || 0.35);
+  const confiancaMinima = () => Number(process.env.LAYA_CONFIANCA_MINIMA || 0.25); // média entre vários agentes: a líder costuma ficar abaixo de 50%
 
   const ativo = () => Boolean(url());
 
@@ -40,16 +40,32 @@ export function criarDecisor() {
     if (Object.keys(criterios).length < 2) throw new Error('o Laya precisa de pelo menos dois agentes com função para escolher');
 
     const inicio = Date.now();
-    const resultado = await perguntar(texto, {
-      agente: { type: 'choice', instructions: 'Qual membro da equipe deve cuidar deste pedido?', criteria: criterios },
-      urgencia: { type: 'score', instructions: 'Quão urgente é este pedido?', criteria: URGENCIAS },
-    });
-    const agente = resultado.answers?.agente;
+    // O Laya favorece opções pela POSIÇÃO na lista (documentado pelo projeto). Para anular isso,
+    // a mesma pergunta vai girada k vezes, cada agente passando por todas as posições, e tiramos a
+    // média (receita oficial do Laya). As k rotações vão na mesma chamada: custa quase nada a mais.
+    const ids = Object.keys(criterios);
+    const k = ids.length;
+    const perguntaAgente = { type: 'choice', instructions: 'Qual membro da equipe deve cuidar deste pedido?', criteria: criterios };
+    const questions = { urgencia: { type: 'score', instructions: 'Quão urgente é este pedido?', criteria: URGENCIAS } };
+    for (let r = 0; r < k; r++) questions[`agente${r}`] = { ...perguntaAgente, option_order: ids.map((_, i) => (i + r) % k) };
+    const resultado = await perguntar(texto, questions);
+
+    const media = Object.fromEntries(ids.map((id) => [id, 0]));
+    let respostas = 0;
+    for (let r = 0; r < k; r++) {
+      const probs = resultado.answers?.[`agente${r}`]?.probabilities;
+      if (!probs) continue;
+      respostas++;
+      for (const id of ids) media[id] += (probs[id] || 0) / k;
+    }
+    if (!respostas) throw new Error('o Laya não devolveu uma escolha');
+    const ranking = Object.entries(media).sort((a, b) => b[1] - a[1]);
     const urgencia = resultado.answers?.urgencia;
-    if (!agente?.choice) throw new Error('o Laya não devolveu uma escolha');
     return {
-      escolha: agente.choice,
-      confianca: Math.round((agente.answer_confidence ?? agente.probabilities?.[agente.choice] ?? 0) * 100) / 100,
+      escolha: ranking[0][0],
+      confianca: Math.round(ranking[0][1] * 100) / 100,
+      // as 3 mais prováveis, para o chefe ver por que ele escolheu
+      ranking: ranking.slice(0, 3).map(([id, p]) => ({ id, p: Math.round(p * 100) / 100 })),
       urgencia: urgencia ? URGENCIAS[Math.min(URGENCIAS.length - 1, Math.round(urgencia.score))] : null,
       ms: Date.now() - inicio,
     };
@@ -64,7 +80,7 @@ export function criarDecisor() {
     const incerto = r.confianca < confiancaMinima() && orq && r.escolha !== orq;
     return {
       por: 'Laya', modo: 'escolheu', agente: incerto ? orq : r.escolha, escolhaOriginal: r.escolha,
-      confianca: r.confianca, incerto: Boolean(incerto), urgencia: r.urgencia, ms: r.ms,
+      confianca: r.confianca, ranking: r.ranking, incerto: Boolean(incerto), urgencia: r.urgencia, ms: r.ms,
     };
   }
 
@@ -73,7 +89,7 @@ export function criarDecisor() {
   // - de um agente: se o Crânio tiver certeza de que outro agente é mais adequado, redireciona.
   async function avaliar(texto, equipe, sugerido, de = 'chefe') {
     const r = await consultar(texto, equipe);
-    const base = { por: 'Laya', sugerido, escolhaOriginal: r.escolha, confianca: r.confianca, urgencia: r.urgencia, ms: r.ms };
+    const base = { por: 'Laya', sugerido, escolhaOriginal: r.escolha, confianca: r.confianca, ranking: r.ranking, urgencia: r.urgencia, ms: r.ms };
     if (r.escolha === sugerido || !equipe[r.escolha]) return { ...base, modo: 'confirmou', agente: sugerido };
     if (de === 'chefe') return { ...base, modo: 'alertou', agente: sugerido };
     const redireciona = r.confianca >= confiancaMinima() && r.escolha !== de; // nunca devolve a tarefa a quem delegou
