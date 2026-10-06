@@ -31,44 +31,103 @@ export function criarDecisor() {
 
   // Pergunta ao Laya qual agente combina com o pedido e qual a urgência.
   // equipe: { id: { funcao } } dos agentes que podem receber a ordem
-  async function consultar(texto, equipe) {
+  // Dois jeitos de perguntar ao Laya, combinados por padrão (LAYA_METODO = combinado | escolha | simnao):
+  // - escolha: "qual destes agentes?", girando a lista k vezes para anular o viés de posição do Laya;
+  // - simnao:  para cada agente, "este pedido é sobre <função>?" (sim/não), sem lista e sem posição.
+  // Tudo vai numa única chamada ao Laya.
+  // Calibração por contexto vazio: quanto o Laya prefere cada agente SEM pedido nenhum.
+  // Essa preferência "de fábrica" é descontada das respostas reais. Guardada por configuração da equipe.
+  const priores = new Map();
+  async function prior(criterios, montar) {
+    const chave = JSON.stringify(criterios);
+    if (!priores.has(chave)) {
+      const neutros = ['N/A', 'pedido', '[sem conteúdo]'];
+      const leituras = [];
+      for (const n of neutros) leituras.push(montar(await perguntar(n, montar.questions)));
+      const media = (campo) => Object.fromEntries(Object.keys(criterios).map((id) => [id, leituras.reduce((a, l) => a + l[campo][id], 0) / leituras.length]));
+      priores.set(chave, { escolha: media('escolha'), sim: media('sim') });
+      if (priores.size > 20) priores.delete(priores.keys().next().value);
+    }
+    return priores.get(chave);
+  }
+
+  async function consultar(texto, equipe, { detalhes = false } = {}) {
     if (!ativo()) throw new Error('o Laya não está configurado (defina LAYA_URL no .env)');
     const criterios = {};
     for (const [id, c] of Object.entries(equipe)) {
       criterios[id] = id === 'orquestrador' || c.delegar ? DESCRICAO_ORQUESTRADOR : c.funcao || id;
     }
-    if (Object.keys(criterios).length < 2) throw new Error('o Laya precisa de pelo menos dois agentes com função para escolher');
-
-    const inicio = Date.now();
-    // O Laya favorece opções pela POSIÇÃO na lista (documentado pelo projeto). Para anular isso,
-    // a mesma pergunta vai girada k vezes, cada agente passando por todas as posições, e tiramos a
-    // média (receita oficial do Laya). As k rotações vão na mesma chamada: custa quase nada a mais.
     const ids = Object.keys(criterios);
     const k = ids.length;
+    if (k < 2) throw new Error('o Laya precisa de pelo menos dois agentes com função para escolher');
+    const metodo = ['escolha', 'simnao'].includes(process.env.LAYA_METODO) ? process.env.LAYA_METODO : 'combinado';
+
+    const inicio = Date.now();
     const perguntaAgente = { type: 'choice', instructions: 'Qual membro da equipe deve cuidar deste pedido?', criteria: criterios };
     const questions = { urgencia: { type: 'score', instructions: 'Quão urgente é este pedido?', criteria: URGENCIAS } };
     for (let r = 0; r < k; r++) questions[`agente${r}`] = { ...perguntaAgente, option_order: ids.map((_, i) => (i + r) % k) };
-    const resultado = await perguntar(texto, questions);
+    ids.forEach((id, n) => { questions[`sim${n}`] = { type: 'noul', instructions: `Este pedido é trabalho de quem: ${criterios[id]}?` }; });
+    // lê uma resposta do Laya: média das rotações (escolha) e P(sim) de cada agente
+    const ler = (resultado) => {
+      const ans = resultado.answers || {};
+      const escolha = Object.fromEntries(ids.map((id) => [id, 0]));
+      const porRotacao = [];
+      for (let r = 0; r < k; r++) {
+        const a = ans[`agente${r}`];
+        if (!a?.probabilities) continue;
+        porRotacao.push(a.choice);
+        for (const id of ids) escolha[id] += (a.probabilities[id] || 0) / k;
+      }
+      const sim = Object.fromEntries(ids.map((id, n) => [id, Number(ans[`sim${n}`]?.noul ?? 0)]));
+      return { escolha, sim, porRotacao, urgencia: ans.urgencia };
+    };
+    ler.questions = questions;
 
-    const media = Object.fromEntries(ids.map((id) => [id, 0]));
-    let respostas = 0;
-    for (let r = 0; r < k; r++) {
-      const probs = resultado.answers?.[`agente${r}`]?.probabilities;
-      if (!probs) continue;
-      respostas++;
-      for (const id of ids) media[id] += (probs[id] || 0) / k;
-    }
-    if (!respostas) throw new Error('o Laya não devolveu uma escolha');
-    const ranking = Object.entries(media).sort((a, b) => b[1] - a[1]);
-    const urgencia = resultado.answers?.urgencia;
-    return {
+    const leitura = ler(await perguntar(texto, questions));
+    if (!leitura.porRotacao.length && !Object.values(leitura.sim).some(Boolean)) throw new Error('o Laya não devolveu uma escolha');
+    const base = await prior(criterios, ler);
+
+    // desconta a preferência "de fábrica" e normaliza cada método para somar 1
+    const calibrar = (atual, vazio) => {
+      const bruto = Object.fromEntries(ids.map((id) => [id, atual[id] / Math.max(vazio[id], 0.01)]));
+      const soma = Object.values(bruto).reduce((a, x) => a + x, 0) || 1;
+      return Object.fromEntries(ids.map((id) => [id, bruto[id] / soma]));
+    };
+    const escolha = calibrar(leitura.escolha, base.escolha);
+    const simNorm = calibrar(leitura.sim, base.sim);
+    const porRotacao = leitura.porRotacao;
+    const sim = leitura.sim;
+
+    const final = Object.fromEntries(ids.map((id) => [id,
+      metodo === 'escolha' ? escolha[id] : metodo === 'simnao' ? simNorm[id] : (escolha[id] + simNorm[id]) / 2]));
+    const ranking = Object.entries(final).sort((a, b) => b[1] - a[1]);
+    const urgencia = leitura.urgencia;
+    const r2 = (x) => Math.round(x * 100) / 100;
+    const saida = {
       escolha: ranking[0][0],
-      confianca: Math.round(ranking[0][1] * 100) / 100,
+      confianca: r2(ranking[0][1]),
       // as 3 mais prováveis, para o chefe ver por que ele escolheu
-      ranking: ranking.slice(0, 3).map(([id, p]) => ({ id, p: Math.round(p * 100) / 100 })),
+      ranking: ranking.slice(0, 3).map(([id, p]) => ({ id, p: r2(p) })),
       urgencia: urgencia ? URGENCIAS[Math.min(URGENCIAS.length - 1, Math.round(urgencia.score))] : null,
       ms: Date.now() - inicio,
     };
+    if (detalhes) {
+      saida.diagnostico = {
+        metodo,
+        criterios,
+        escolhaPorRotacao: porRotacao,
+        semPedido: { escolha: Object.fromEntries(ids.map((id) => [id, r2(base.escolha[id])])), simNao: Object.fromEntries(ids.map((id) => [id, r2(base.sim[id])])) },
+        comPedido: { escolha: Object.fromEntries(ids.map((id) => [id, r2(leitura.escolha[id])])), simNao: Object.fromEntries(ids.map((id) => [id, r2(sim[id])])) },
+        calibrado: { escolha: Object.fromEntries(ids.map((id) => [id, r2(escolha[id])])), simNao: Object.fromEntries(ids.map((id) => [id, r2(simNorm[id])])) },
+        final: Object.fromEntries(ranking.map(([id, p]) => [id, r2(p)])),
+      };
+    }
+    return saida;
+  }
+
+  // Para a página de diagnóstico: o que o Crânio perguntou e como cada agente pontuou.
+  async function diagnosticar(texto, equipe) {
+    return consultar(texto, equipe, { detalhes: true });
   }
 
   const orquestradorDe = (equipe) => Object.keys(equipe).find((id) => id === 'orquestrador' || equipe[id].delegar);
@@ -117,5 +176,5 @@ export function criarDecisor() {
     }
   }
 
-  return { ativo, online, decidir, avaliar, verificar };
+  return { ativo, online, decidir, avaliar, diagnosticar, verificar };
 }

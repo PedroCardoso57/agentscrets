@@ -275,6 +275,13 @@ async function atender(req, res) {
   if (rota === '/api/documentacao' && req.method === 'GET') return enviarJSON(res, 200, documentacao.resumo());
   if (rota === '/api/documentacao/atualizar' && req.method === 'POST') return enviarJSON(res, 200, await documentacao.atualizar({ forcar: true }));
 
+  // diagnóstico do Crânio: GET /api/decisor/teste?texto=escreva uma legenda
+  if (rota === '/api/decisor/teste') {
+    const texto = (url.searchParams.get('texto') || '').trim();
+    if (!texto) return enviarJSON(res, 400, { erro: 'use ?texto=seu pedido' });
+    try { return enviarJSON(res, 200, await decisor.diagnosticar(texto, motores.equipe())); } catch (erro) { return enviarJSON(res, 502, { erro: erro.message }); }
+  }
+
   if (rota === '/api/decisor') return enviarJSON(res, 200, { ativo: decisor.ativo(), online: await decisor.online(), nome: 'Laya' });
 
   if (rota === '/api/ordens' && req.method === 'GET') return enviarJSON(res, 200, ordens.slice(-50));

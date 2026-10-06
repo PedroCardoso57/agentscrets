@@ -168,6 +168,8 @@ O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0,
 | Ordem para todos | Segue direto (não há o que decidir). |
 | Laya fora do ar | A ordem segue direto, marcada "Crânio fora do ar". |
 
+**Como o Crânio pergunta ao Laya:** o Laya tem preferências que não têm a ver com o pedido (pela posição do agente na lista e pelo próprio texto das funções). Para anular isso, o Crânio (1) faz a pergunta "qual agente?" girando a lista, (2) pergunta a cada agente "este pedido é sobre a sua função?" (sim/não) e (3) mede a preferência do Laya com um pedido vazio e a desconta. O método pode ser trocado com `LAYA_METODO` (`combinado`, `escolha` ou `simnao`). Para ver como ele pesou um pedido, abra no navegador `https://SEU-DOMINIO/api/decisor/teste?texto=seu pedido`.
+
 Na cena, o seu bonequinho levanta e põe as mãos sobre a bola, ela pulsa e solta um feixe de luz até o agente, e um balão mostra a decisão; as delegações do Orquestrador também soltam o feixe. O painel e a documentação registram cada decisão. Clicar na bola foca a câmera nela.
 
 Para ligar no VPS (precisa de ~3 GB de RAM livres; confira com `free -h`):
