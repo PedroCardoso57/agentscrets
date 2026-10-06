@@ -14,9 +14,7 @@ export const AGENTES = [
   { id: 'pesquisador',  nome: 'Pesquisador',  funcao: 'Pesquisa e coleta dados',      atividade: 'ler',      cor: '#4c8dff', cabelo: '#111111', pele: '#c68642' },
   { id: 'redator',      nome: 'Redator',      funcao: 'Escreve conteúdos',            atividade: 'digitar',  cor: '#3fb27f', cabelo: '#a0522d', pele: '#ffdbac' },
   { id: 'designer',     nome: 'Designer',     funcao: 'Cria peças visuais',           atividade: 'desenhar', cor: '#b05cf0', cabelo: '#e8b04a', pele: '#f1c27d' },
-  { id: 'analista',     nome: 'Analista',     funcao: 'Analisa métricas',             atividade: 'analisar', cor: '#e0b23c', cabelo: '#3b2a20', pele: '#8d5524' },
   { id: 'programador',  nome: 'Programador',  funcao: 'Automatiza e integra',         atividade: 'digitar',  cor: '#2ec4d6', cabelo: '#1a1a1a', pele: '#e0ac69' },
-  { id: 'atendimento',  nome: 'Atendimento',  funcao: 'Responde clientes',            atividade: 'telefone', cor: '#f07a3a', cabelo: '#5a3825', pele: '#ffdbac' },
   { id: 'revisor',      nome: 'Revisor',      funcao: 'Revisa e aprova entregas',     atividade: 'ler',      cor: '#8e99ad', cabelo: '#9a9a9a', pele: '#c68642' },
 ];
 

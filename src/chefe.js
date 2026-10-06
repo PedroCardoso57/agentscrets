@@ -38,8 +38,9 @@ export class Chefe {
   // alvos: lista de estações ({ grupo, boneco }) que vão ouvir a ordem.
   // todos: se true, o chefe faz um anúncio para a equipe inteira.
   // eventos: { aoFalar(texto), aoTerminar() }
-  darOrdem({ texto, alvos, todos, ...eventos }) {
-    this.fila.push({ texto, alvos, todos, eventos });
+  // parada: { pos, via, olhar, tempo, aoChegar } — consulta o Crânio antes de levar a ordem
+  darOrdem({ texto, alvos, todos, parada, ...eventos }) {
+    this.fila.push({ texto, alvos, todos, parada, eventos });
   }
 
   ocupado() { return Boolean(this.atual) || this.fila.length > 0; }
@@ -77,15 +78,41 @@ export class Chefe {
     }
     ordem.rotaMundo = this.rotaAte(destino);
     ordem.destino = destino;
-    this.boneco.irPor(ordem.rotaMundo.map((v) => this.grupo.worldToLocal(v.clone())), olhar - this.grupo.rotation.y);
+    ordem.olhar = olhar;
+    if (ordem.parada) {
+      // primeiro vai ao Crânio; de lá segue o caminho normal, a partir da frente da mesa
+      const { via, pos } = ordem.parada;
+      // sem "via": a consulta é ali mesmo (a bola de cristal fica na mesa do chefe)
+      this.boneco.irPor(this.local(via ? [...this.saida(), via, pos] : [pos]), ordem.parada.olhar - this.grupo.rotation.y);
+      ordem.fase = 'indo-consultar';
+      return;
+    }
+    this.boneco.irPor(this.local(ordem.rotaMundo), olhar - this.grupo.rotation.y);
     ordem.fase = 'indo';
+  }
+
+  local(pontos) {
+    return pontos.map((v) => this.grupo.worldToLocal(v.clone()));
   }
 
   atualizar(dt, t) {
     if (!this.atual && this.fila.length) this.comecar(this.fila.shift());
     const o = this.atual;
     if (o) {
-      if (o.fase === 'indo' && this.boneco.chegou() && this.boneco.emPe > 0.9) {
+      if (o.fase === 'indo-consultar' && this.boneco.chegou() && this.boneco.emPe > 0.9) {
+        o.fase = 'consultando';
+        o.tempo = 0;
+        this.boneco.gesto = o.parada.gesto || null;
+        o.parada.aoChegar?.();
+      } else if (o.fase === 'consultando') {
+        o.tempo += dt;
+        if (o.tempo > (o.parada.tempo ?? 2.2)) {
+          this.boneco.gesto = null;
+          const resto = o.parada.via ? [o.parada.via, ...o.rotaMundo.slice(1)] : o.rotaMundo;
+          this.boneco.irPor(this.local(resto), o.olhar - this.grupo.rotation.y);
+          o.fase = 'indo';
+        }
+      } else if (o.fase === 'indo' && this.boneco.chegou() && this.boneco.emPe > 0.9) {
         o.fase = 'falando';
         o.tempo = 0;
         this.boneco.gesto = o.todos || o.alvos.length !== 1 ? 'anunciar' : 'apontar';

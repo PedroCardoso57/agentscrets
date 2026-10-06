@@ -19,7 +19,15 @@
 
   <header id="topo">
     <h1>agentscrets <span>escritório de agentes de IA</span></h1>
-    <div id="conexao" title="Origem dos status">● demo</div>
+    <div class="botoes-topo">
+      <button type="button" id="abrir-clientes" title="Fichas dos clientes: tom de voz, público, o que evitar">📇 Clientes</button>
+      <button type="button" id="abrir-rotinas" title="Ordens que saem sozinhas num horário">🗓 Rotinas</button>
+      <button type="button" id="abrir-entregas" title="Tudo o que os agentes já produziram">📦 Entregas</button>
+      <button type="button" id="abrir-documentacao" title="Documentação do projeto, mantida pelo Redator">📄 Documentação</button>
+      <button type="button" id="abrir-relatorio" title="Como cada agente e cada IA está se saindo">📊 Relatório</button>
+      <button type="button" id="abrir-equipe" title="Escolher a IA de cada agente">⚙ Equipe</button>
+      <div id="conexao" title="Origem dos status">● demo</div>
+    </div>
   </header>
 
   <aside id="painel">
@@ -35,10 +43,72 @@
       <span class="coroa">★</span>
       <select id="destinatario" aria-label="Para quem é a ordem"></select>
     </label>
+    <select id="cliente-ordem" aria-label="Para qual cliente" title="A ficha do cliente vai junto com a ordem" hidden><option value="">Sem cliente</option></select>
     <input id="texto-ordem" type="text" maxlength="2000" placeholder="Dê uma ordem… (ex.: escreva 3 legendas para o post de segunda)" aria-label="Ordem" />
     <button type="submit">Enviar</button>
     <p id="aviso-ordem" role="status"></p>
   </form>
+
+  <dialog id="dlg-equipe" aria-labelledby="titulo-equipe">
+    <header><h2 id="titulo-equipe">Equipe · qual IA cada agente usa</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-relatorio" aria-labelledby="titulo-relatorio">
+    <header>
+      <h2 id="titulo-relatorio">Relatório da equipe</h2>
+      <select name="dias" aria-label="Período">
+        <option value="1">Hoje</option>
+        <option value="7" selected>Últimos 7 dias</option>
+        <option value="30">Últimos 30 dias</option>
+      </select>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-documentacao" aria-labelledby="titulo-doc">
+    <header>
+      <h2 id="titulo-doc">Documentação do projeto</h2>
+      <button type="button" class="atualizar-doc">Atualizar agora</button>
+      <button type="button" class="baixar-doc">Baixar .md</button>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <p class="meta-doc"></p>
+    <article class="corpo doc"></article>
+  </dialog>
+
+  <dialog id="dlg-clientes" aria-labelledby="titulo-clientes">
+    <header><h2 id="titulo-clientes">Clientes · o que a equipe precisa saber de cada marca</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-rotinas" aria-labelledby="titulo-rotinas">
+    <header><h2 id="titulo-rotinas">Rotinas · ordens que saem sozinhas</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-entregas" aria-labelledby="titulo-entregas">
+    <header>
+      <h2 id="titulo-entregas">Entregas da equipe</h2>
+      <input name="busca" type="search" placeholder="Buscar no pedido ou na entrega…" aria-label="Buscar" />
+      <select name="agente" aria-label="Agente"><option value="">Todos os agentes</option></select>
+      <select name="cliente" aria-label="Cliente" hidden><option value="">Todos os clientes</option></select>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
+    <div class="grade-entregas">
+      <div class="coluna-lista">
+        <ul class="lista-entregas"></ul>
+        <div class="rodape-entregas">
+          <span class="total"></span>
+          <button type="button" class="anterior">‹</button>
+          <button type="button" class="proxima">›</button>
+          <button type="button" class="baixar-todas" title="Baixa num único .md tudo o que está filtrado">Baixar todas</button>
+        </div>
+      </div>
+      <div class="leitura-entrega"></div>
+    </div>
+  </dialog>
 
   <script type="module" src="src/main.js"></script>
 </body>

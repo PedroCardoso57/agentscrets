@@ -244,6 +244,13 @@ export class Boneco {
       p.esq = { x: -0.5 + Math.sin(t * 3) * 0.2, abre: 0.2, cot: -1.2 };
       p.troncoX = 0.02; p.cabecaX = 0.1; p.cabecaY = 0;
       p.boca = Math.abs(Math.sin(t * 9));
+    } else if (this.gesto === 'consultar') {
+      // mãos sobre a bola de cristal
+      p.emPe = 1;
+      const v = Math.sin(t * 3) * 0.08;
+      p.esq = { x: -1.05 + v, abre: -0.25, cot: -0.7 };
+      p.dir = { x: -1.05 - v, abre: -0.25, cot: -0.7 };
+      p.troncoX = 0.25; p.cabecaX = 0.35; p.cabecaY = 0;
     } else if (this.gesto === 'anunciar') {
       p.emPe = 1;
       const g = Math.sin(t * 4);

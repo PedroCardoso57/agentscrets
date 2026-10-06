@@ -123,6 +123,8 @@ Edite `src/agentes.js`. Cada agente tem:
 
 As mesas são distribuídas sozinhas (8 por bloco); a sala cresce conforme a equipe aumenta.
 
+Com o servidor, a equipe é a do `motores.json`: para tirar alguém, use **Remover da equipe** no ⚙ Equipe (a mesa some na hora; as entregas antigas continuam no arquivo).
+
 O seu bonequinho é o `CHEFE`, no mesmo arquivo: troque `nome` (aparece como "★ Você"), cores, cabelo e pele.
 
 ## Ligando as suas IAs (motores embutidos)
@@ -133,7 +135,7 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 {
   "orquestrador": { "provedor": "anthropic", "modelo": "claude-opus-5-5", "delegar": true, "funcao": "Planeja e distribui", "instrucoes": "Você é o Orquestrador..." },
   "redator":      { "provedor": "anthropic", "modelo": "claude-opus-5-5", "funcao": "Escreve legendas", "instrucoes": "Você é o Redator..." },
-  "analista":     { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
+  "revisor":      { "provedor": "openai", "modelo": "<modelo da OpenAI>", "instrucoes": "..." },
   "pesquisador":  { "provedor": "gemini", "modelo": "<modelo do Gemini>", "instrucoes": "..." },
   "designer":     { "webhook": "https://seu-n8n.com/webhook/designer" }
 }
@@ -155,6 +157,110 @@ O jeito principal: o próprio servidor chama a IA de cada agente. Você só conf
 - Se o servidor reiniciar no meio de uma tarefa, ela é marcada como interrompida (em vez de ser repetida e cobrada de novo sem você saber).
 
 Agentes que não estão no `motores.json` continuam podendo ser ligados de fora, pelas rotas abaixo.
+
+## Crânio: a bola de cristal que decide (Laya)
+
+O [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0, grátis) é um modelo de **decisão**: não escreve textos, mas escolhe entre opções e diz a certeza, em milissegundos. No escritório ele é o **Crânio**, uma bola de cristal em cima da sua mesa, acesa quando o Laya está no ar. **Toda decisão passa por ela:**
+
+| Situação | O que o Crânio faz |
+|---|---|
+| Ordem para **🔮 Crânio decide** | Escolhe o agente pela função de cada um e a urgência; na dúvida (abaixo de `LAYA_CONFIANCA_MINIMA`), manda para o Orquestrador. |
+| Você escolhe um agente direto | Confirma, ou registra quem ele indicaria; a sua escolha vale. |
+| O Orquestrador delega uma tarefa | Confirma ou, se tiver certeza de que outro agente é mais adequado, **redireciona**. |
+| Ordem para todos | Segue direto (não há o que decidir). |
+| Laya fora do ar | A ordem segue direto, marcada "Crânio fora do ar". |
+
+**Como o Crânio pergunta ao Laya:** o Laya tem preferências que não têm a ver com o pedido (pela posição do agente na lista e pelo próprio texto das funções). Para anular isso, o Crânio (1) faz a pergunta "qual agente?" girando a lista, (2) pergunta a cada agente "este pedido é sobre a sua função?" (sim/não) e (3) mede a preferência do Laya com um pedido vazio e a desconta. O método pode ser trocado com `LAYA_METODO` (`combinado`, `escolha` ou `simnao`). Para ver como ele pesou um pedido, abra no navegador `https://SEU-DOMINIO/api/decisor/teste?texto=seu pedido`.
+
+Na cena, o seu bonequinho levanta e põe as mãos sobre a bola, ela pulsa e solta um feixe de luz até o agente, e um balão mostra a decisão; as delegações do Orquestrador também soltam o feixe. O painel e a documentação registram cada decisão. Clicar na bola foca a câmera nela.
+
+Para ligar no VPS (precisa de ~3 GB de RAM livres; confira com `free -h`):
+
+```bash
+nano .env      # descomente LAYA_URL=http://laya:8000 e ponha COMPOSE_PROFILES=https,laya
+docker compose up -d --build
+docker compose logs -f laya   # na primeira vez ele baixa o modelo (~2 GB); espere "Uvicorn running"
+```
+
+O Laya decide melhor quanto mais clara for a **função** de cada agente (em ⚙ Equipe).
+
+## Documentação viva (mantida pelo Redator)
+
+O botão **📄 Documentação** abre o documento do projeto, que o **Redator** mantém atualizado sozinho. O escritório anota cada novidade (ordens entregues, decisões do Crânio e do Orquestrador, trocas de IA na equipe, suas avaliações) e, a cada poucos minutos, se houver novidades, o Redator reescreve o documento com a IA dele. Enquanto isso, o bonequinho dele aparece "Atualizando a documentação".
+
+- Seções: Visão geral, Equipe e IAs, Decisões, Entregas recentes, Pendências e próximos passos, Histórico.
+- A janela atualiza na hora quando ele termina (uma bolinha verde no botão avisa que há novidades); **Atualizar agora** força uma rodada e **Baixar .md** salva o arquivo.
+- Fica em `dados/documentacao.md` (com a versão anterior em `documentacao.md.anterior`).
+- Para trocar o responsável ou o intervalo: `DOCUMENTADOR=redator` e `DOC_INTERVALO_MIN=3` no `.env`. O documentador precisa ter uma IA configurada (não webhook).
+
+## Clientes, ajustes, Revisor, internet e rotinas
+
+### 📇 Clientes
+Cadastre uma ficha por cliente: nicho, público, tom de voz, produtos, o que evitar e exemplos que deram certo. Escolha o cliente na barra de ordens (aparece ao lado de "Para") e a ficha vai junto para o agente, inclusive nas tarefas que o Orquestrador distribui. No Telegram, comece a ordem com `#id-do-cliente` (ex.: `#padaria-do-ze /redator legenda de natal`); `/clientes` lista os ids. As entregas guardam o cliente e o 📦 Entregas filtra por ele. Fica em `dados/clientes.json`.
+
+### ↩ Ajustes
+Para refazer uma entrega, clique em **↩ ajustar** embaixo dela (no painel ou no 📦 Entregas) e diga o que mudar ("mais curta", "tom mais sério"). O mesmo agente recebe o pedido original, o que ele entregou e o seu ajuste, e devolve a versão completa. No Telegram, é só **responder à mensagem da entrega**.
+
+### ✅ Revisor automático
+Em ⚙ Equipe, marque **"Entregas passam pelo Revisor"** nos agentes que você quer revisados. O agente termina, o Revisor corrige, e você recebe a versão final com as observações dele (no painel, no `.md` e no Telegram). Se o Revisor falhar, a entrega chega sem revisão e com o aviso. Para usar outro agente como revisor: `REVISOR=<id>` no `.env`. Cada revisão é mais uma chamada de IA: atenção às cotas gratuitas.
+
+### 🌐 Pesquisa na internet
+Em ⚙ Equipe, marque **"Pesquisa na internet"** (Claude ou Gemini). O agente busca na web e a resposta termina com **Fontes:**. No Gemini usa a busca do Google (grátis dentro do limite do plano); no Claude, a ferramenta de busca da Anthropic (cobrada à parte por busca).
+
+### 🗓 Rotinas
+Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no horário de Brasília. Cada rotina tem ordem, destinatário (ou o Crânio decide), cliente e botão **Rodar agora**. As entregas chegam como qualquer outra (painel, 📦, Telegram). `/rotinas` no Telegram lista as agendadas. Ficam em `dados/rotinas.json`.
+
+### IA reserva (erro 429, limite de uso)
+As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
+1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;
+2. se continuar, ou se a cota do dia acabou, ele usa a **IA reserva**: em ⚙ Equipe → "IA reserva", escolha outro agente para emprestar a IA dele (de preferência de outro provedor: Gemini ↔ Groq ↔ OpenRouter ↔ NVIDIA ↔ Mistral). O papel e as instruções continuam do agente; o relatório mostra "(reserva)".
+
+Para gastar menos cota: espalhe os agentes por provedores diferentes, use o Revisor só onde vale a pena e aumente `DOC_INTERVALO_MIN` (a documentação viva também chama a IA do Redator).
+
+## Entregas: tudo o que a equipe já produziu
+
+O botão **📦 Entregas** abre o arquivo de tudo o que os agentes responderam, da mais nova para a mais antiga: busca por texto (no pedido ou na entrega), filtro por agente, leitura formatada, **Copiar texto**, **Baixar .md** de cada uma e **Baixar todas** (junta num só arquivo o que estiver filtrado).
+
+Cada entrega também vira um arquivo `.md` na pasta de dados, organizado por dia (horário de Brasília, ou o `TZ` do `.env`):
+
+```
+dados/entregas/
+  2026-10-06/
+    1432-redator-legenda-sobre-cafe-gelado-f3b4aadb-0.md
+    1433-designer-carrossel-de-lancamento-9a1c22e0-0.md
+  indice.json
+```
+
+O arquivo traz agente, IA, data, quem pediu, tempo, a decisão do Crânio, a sua avaliação (👍 / 👎 regravam o arquivo), o pedido e a entrega. Erros e respostas simuladas não entram. Entregas feitas antes desta versão são arquivadas na primeira vez que o servidor sobe. No Docker, para copiar tudo para fora: `docker compose cp escritorio:/app/dados/entregas ./entregas`.
+
+### Telegram: ordens e entregas pelo celular
+
+Pelo Telegram você manda ordens para a equipe e recebe cada entrega de volta, com um resumo na mensagem e o `.md` completo anexado. Quando a ordem sai do Telegram, a entrega chega como resposta à sua mensagem.
+
+1. No Telegram, abra o **@BotFather**, mande `/newbot`, escolha um nome e um usuário terminado em `bot`. Ele responde com um **token**.
+2. No VPS, coloque no `.env`: `TELEGRAM_BOT_TOKEN=<o token>` e rode `docker compose up -d`.
+3. Abra o seu bot no Telegram e mande **/start**. Ele responde "✅ Escritório conectado!".
+
+Como mandar ordens:
+
+| Mensagem | Vai para |
+|---|---|
+| `preciso de 3 legendas para segunda` | o 🔮 Crânio escolhe (com o Laya ligado); sem ele, o Orquestrador |
+| `/redator escreva 3 legendas…` (ou `@redator …`) | o agente indicado (o Crânio ainda confere) |
+| `/todos reunião às 15h` | toda a equipe |
+| `/equipe` | mostra quem está fazendo o quê |
+| `/ajuda` | lista os comandos e os agentes |
+
+O primeiro chat que mandar `/start` fica gravado em `dados/telegram.json`: só ele dá ordens e recebe entregas, e mensagens de outros chats são ignoradas. Para trocar, apague esse arquivo e reinicie. Num grupo, adicione o bot e mande `/start` lá; no grupo, o bot só enxerga mensagens que começam com `/` (use `/orquestrador …` em vez de texto solto). As entregas antigas não são reenviadas.
+
+## Trocando a IA pela tela e comparando na prática
+
+- **⚙ Equipe** (no topo, ou "⚙ trocar IA" embaixo de cada agente): escolha a IA, o modelo, a função e as instruções de cada agente. **Testar** faz uma pergunta curta com a configuração antes de salvar, para conferir modelo e chave. Salvar vale já na próxima ordem, sem reiniciar. As chaves continuam só no `.env`; a tela apenas mostra se cada uma está configurada.
+- O que você salva pela tela fica na pasta de dados e passa a valer no lugar do `motores.json`. Para voltar ao arquivo, use **"Voltar ao motores.json do servidor"** na mesma janela.
+- **👍 / 👎** em cada resposta (no painel de Ordens), com comentário opcional no 👎. Cada resposta guarda qual IA respondeu e quanto tempo levou.
+- **📊 Relatório**: por agente e por IA, mostra respostas, aprovação, erros, tempo médio e os comentários. Escolha hoje, 7 ou 30 dias.
+
+**Sugestão para a primeira semana:** mande quase tudo para o **Orquestrador** e deixe ele distribuir; avalie cada resposta com 👍 / 👎; no meio da semana, troque a IA dos agentes com pior aprovação e compare no relatório. No fim, fique com a melhor IA para cada papel.
 
 ## Conectando motores externos
 
@@ -179,7 +285,7 @@ curl -X POST http://localhost:8787/api/status \
 ```python
 import requests
 requests.post("http://localhost:8787/api/status",
-              json={"id": "analista", "status": "concluido", "tarefa": "Relatório pronto"})
+              json={"id": "pesquisador", "status": "concluido", "tarefa": "Pesquisa pronta"})
 ```
 
 Também aceita uma lista de status de uma vez. Um `id` que não existe cria uma **mesa nova** — mande junto `nome`, `funcao`, `atividade` e `cor` se quiser personalizar.
@@ -243,7 +349,8 @@ Rodando em casa, o servidor só aceita conexões desta máquina (`127.0.0.1`). Q
 index.html              página
 servidor.js             serve a página, recebe status e entrega ordens (Node, sem dependências)
 motores.exemplo.json    qual IA cada agente usa (copie para motores.json)
-motores/                motores embutidos: chama Claude, OpenAI, Gemini, APIs compatíveis ou webhooks
+motores/                motores embutidos (Claude, OpenAI, Gemini, APIs compatíveis, webhooks) e o decisor Laya
+laya/                   contêiner do servidor do Laya
 .env.exemplo            senha e chaves de API (copie para .env)
 docker-compose.yml      sobe no VPS, com HTTPS opcional
 Dockerfile, render.yaml, ecosystem.config.cjs   outras formas de deixar no ar 24h
@@ -253,6 +360,10 @@ src/boneco.js           bonequinho e suas animações
 src/chefe.js            o seu bonequinho: anda até o agente e entrega a ordem
 src/integracao.js       HTTP/SSE, WebSocket, postMessage, ordens e modo demo
 src/main.js             cena 3D, câmera e painel
+src/configuracao.js     janelas Equipe (trocar IA) e Relatório
+src/cranio.js           a bola de cristal do Crânio (Laya) e a animação das decisões
+src/documentacao.js     janela da documentação viva
+motores/documentacao.js o Redator mantendo a documentação do projeto
 exemplos/               motores de exemplo (Node e Python) recebendo ordens e enviando status
 vendor/three/           Three.js r169 (licença MIT)
 ```

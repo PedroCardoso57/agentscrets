@@ -5,7 +5,12 @@ import { AGENTES, CHEFE, STATUS } from './agentes.js';
 import { criarSala, criarEstacao, posicaoEstacao, desenharTela, desenharQuadro } from './escritorio.js';
 import { Boneco } from './boneco.js';
 import { Chefe } from './chefe.js';
+import { Cranio } from './cranio.js';
 import { criarIntegracao } from './integracao.js';
+import { criarConfiguracao } from './configuracao.js';
+import { criarJanelaDocumentacao } from './documentacao.js';
+import { criarJanelaEntregas } from './entregas.js';
+import { criarGestao } from './gestao.js';
 
 // ---------- renderização ----------
 
@@ -52,6 +57,11 @@ cena.add(chefe.grupo);
 const etiquetaChefe = criarEtiqueta(`★ ${CHEFE.nome}`, 'chefe');
 chefe.boneco.raiz.add(etiquetaChefe);
 etiquetaChefe.element.querySelector('.placa i').style.background = '#f4d35e';
+
+// o Crânio: bola de cristal do Laya, o decisor, na mesa do chefe (só aparece com o Laya configurado)
+const cranio = new Cranio();
+cranio.grupo.visible = false;
+cranio.anexar(chefe.grupo);
 
 function criarEtiqueta(nome, classe = '') {
   const el = document.createElement('div');
@@ -105,10 +115,24 @@ function montar() {
 
 const lista = document.getElementById('lista-agentes');
 const destinatario = document.getElementById('destinatario');
+const clienteOrdem = document.getElementById('cliente-ordem');
+let listaClientes = [];
+const nomeCliente = (id) => listaClientes.find((c) => c.id === id)?.nome || id;
+
+// seletor de cliente na barra de ordens (só aparece quando há clientes cadastrados)
+function atualizarClientes(lista) {
+  listaClientes = lista;
+  const atual = clienteOrdem.value;
+  clienteOrdem.replaceChildren(new Option('Sem cliente', ''), ...lista.map((c) => new Option(`👤 ${c.nome}`, c.id)));
+  clienteOrdem.value = lista.some((c) => c.id === atual) ? atual : '';
+  clienteOrdem.hidden = !lista.length;
+  renderizarOrdens();
+}
 function montarPainel() {
   lista.innerHTML = '';
   const selecionado = destinatario.value;
   destinatario.innerHTML = '<option value="todos">Para: todos</option>';
+  if (decisorAtivo) destinatario.prepend(new Option('🔮 Crânio decide (Laya)', 'auto'));
   for (const [id, e] of estacoes) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="bolinha"></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
@@ -116,10 +140,16 @@ function montarPainel() {
     e.item = li;
     atualizarSubtitulo(e);
     li.onclick = () => selecionar(id);
+    const engrenagem = document.createElement('button');
+    engrenagem.type = 'button';
+    engrenagem.className = 'engrenagem';
+    engrenagem.textContent = '⚙ trocar IA';
+    engrenagem.onclick = (ev) => { ev.stopPropagation(); configuracao?.abrirEquipe(id); };
+    li.appendChild(engrenagem);
     lista.appendChild(li);
     destinatario.add(new Option(`Para: ${e.agente.nome}`, id));
   }
-  destinatario.value = estacoes.has(selecionado) ? selecionado : 'todos';
+  destinatario.value = estacoes.has(selecionado) || (selecionado === 'auto' && decisorAtivo) ? selecionado : decisorAtivo ? 'auto' : 'todos';
 }
 
 function atualizarSubtitulo(e) {
@@ -158,6 +188,13 @@ function enquadrarTudo() {
   irPara(new THREE.Vector3(centro.x - 1, 0.8, centro.z), new THREE.Vector3(centro.x + largura * 0.35, Math.max(largura, profundidade) * 0.62, centro.z + profundidade * 0.85));
 }
 
+// câmera na mesa do chefe, de frente para a bola de cristal
+function focarCranio() {
+  for (const x of estacoes.values()) x.item.classList.remove('foco');
+  const alvo = cranio.posicaoMundo().add(new THREE.Vector3(0, 0.15, 0));
+  irPara(alvo, alvo.clone().add(new THREE.Vector3(-1.5, 1.0, 0.5))); // pelo lado da bola, por cima: o monitor não tapa
+}
+
 function focar(id) {
   const e = estacoes.get(id);
   for (const x of estacoes.values()) x.item.classList.toggle('foco', x === e);
@@ -184,9 +221,12 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   if (!toqueInicio || Math.hypot(ev.clientX - toqueInicio[0], ev.clientY - toqueInicio[1]) > 5) return;
   const ponteiro = new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(ponteiro, camera);
-  const [acerto] = raycaster.intersectObjects([...estacoes.values()].map((e) => e.grupo), true);
+  const alvos = [...estacoes.values()].map((e) => e.grupo);
+  if (cranio.grupo.visible) alvos.push(cranio.grupo);
+  const [acerto] = raycaster.intersectObjects(alvos, true);
   for (let o = acerto?.object; o; o = o.parent) {
     if (o.userData.agenteId) return selecionar(o.userData.agenteId);
+    if (o === cranio.grupo) { destinatario.value = 'auto'; focarCranio(); return; }
   }
 });
 
@@ -198,6 +238,11 @@ const aviso = document.getElementById('aviso-ordem');
 const listaOrdens = document.getElementById('lista-ordens');
 const ordensVistas = new Map(); // id → nº de respostas já mostradas
 let integracao = null;
+let decisorAtivo = false;
+let configuracao = null;
+let janelaDoc = null;
+let gestao = null;
+let clientesCarregados = false;
 
 function avisar(texto, erro = false) {
   aviso.textContent = texto;
@@ -227,7 +272,7 @@ form.addEventListener('submit', async (ev) => {
   const botao = form.querySelector('button');
   botao.disabled = true;
   try {
-    await integracao.enviarOrdem(para, texto);
+    await integracao.enviarOrdem(para, texto, clienteOrdem.value);
     textoOrdem.value = '';
     chefe.digitando = false;
   } catch (erro) {
@@ -257,16 +302,120 @@ function renderizarOrdens() {
     chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
     chip.classList.add(o.estado);
     li.querySelector('.texto').textContent = o.texto;
-    for (const r of o.respostas) {
+    // de onde veio a ordem: cliente, ajuste de uma entrega, rotina agendada, Telegram
+    const marcas = [
+      o.cliente ? `👤 ${nomeCliente(o.cliente)}` : null,
+      o.ajuste ? '↩ ajuste' : null,
+      o.origem?.rotina ? '🗓 rotina' : null,
+      o.origem?.telegram ? '✈ Telegram' : null,
+    ].filter(Boolean);
+    if (marcas.length) li.querySelector('.cab').after(Object.assign(document.createElement('div'), { className: 'marcas', textContent: marcas.join(' · ') }));
+    if (o.decisao) {
+      // quem decidiu o agente (o Laya), com que certeza e a urgência
+      const d = document.createElement('div');
+      d.className = 'decisao';
+      d.textContent = textoDecisao(o.decisao);
+      if (o.decisao.ranking) d.title = `Como o Crânio pesou: ${o.decisao.ranking.map((x) => `${nomeDe(x.id)} ${Math.round(x.p * 100)}%`).join(' · ')}`;
+      d.classList.toggle('alerta', ['alertou', 'redirecionou', 'indisponivel'].includes(o.decisao.modo));
+      li.appendChild(d);
+    }
+    o.respostas.forEach((r, indice) => {
       const resp = document.createElement('div');
       resp.className = 'resp';
-      resp.innerHTML = '<b></b>: <span></span>';
+      resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
       resp.querySelector('b').textContent = nomeDe(r.agente);
-      resp.querySelector('span').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      resp.querySelector('.corpo-resp').textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+      if (r.revisao?.observacoes) {
+        const obs = document.createElement('details');
+        obs.className = 'obs-revisor';
+        obs.innerHTML = '<summary>✅ revisado pelo Revisor</summary><div></div>';
+        obs.querySelector('div').textContent = r.revisao.observacoes;
+        resp.appendChild(obs);
+      } else if (r.revisao?.erro) {
+        resp.appendChild(Object.assign(document.createElement('div'), { className: 'obs-revisor', textContent: `⚠️ sem revisão: ${r.revisao.erro}` }));
+      }
+      if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
       li.appendChild(resp);
-    }
+    });
     listaOrdens.appendChild(li);
   }
+}
+
+// Como o Crânio decidiu, em uma linha
+function textoDecisao(dc) {
+  const certeza = `${Math.round((dc.confianca || 0) * 100)}%`;
+  let t;
+  if (dc.modo === 'indisponivel') return '🔮 Crânio fora do ar: a ordem seguiu direto';
+  if (dc.modo === 'confirmou') t = `🔮 Crânio confirmou ${nomeDe(dc.agente)} (${certeza})`;
+  else if (dc.modo === 'alertou') t = `🔮 Você escolheu ${nomeDe(dc.agente)}; o Crânio indicaria ${nomeDe(dc.escolhaOriginal)} (${certeza})`;
+  else if (dc.modo === 'redirecionou') t = `🔮 Crânio redirecionou de ${nomeDe(dc.sugerido)} para ${nomeDe(dc.agente)} (${certeza})`;
+  else if (dc.incerto) t = `🔮 Crânio ficou em dúvida (${nomeDe(dc.escolhaOriginal)}, ${certeza}) e mandou para ${nomeDe(dc.agente)}`;
+  else t = `🔮 Crânio escolheu ${nomeDe(dc.agente)} (${certeza} de certeza)`;
+  return dc.urgencia ? `${t} · urgência: ${dc.urgencia}` : t;
+}
+
+function resumoCranio(dc) {
+  if (dc.modo === 'alertou') return `${nomeDe(dc.agente)} (chefe) · eu indicaria ${nomeDe(dc.escolhaOriginal)}`;
+  if (dc.modo === 'redirecionou') return `${nomeDe(dc.sugerido)} → ${nomeDe(dc.agente)} · ${Math.round((dc.confianca || 0) * 100)}%`;
+  return `${nomeDe(dc.agente)} · ${Math.round((dc.confianca || 0) * 100)}%${dc.urgencia ? ` · ${dc.urgencia}` : ''}`;
+}
+
+// 👍 / 👎 em cada resposta, com a IA que respondeu e o tempo — base do relatório
+function barraAvaliacao(ordem, r, indice) {
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const info = document.createElement('span');
+  info.textContent = [r.motor, typeof r.ms === 'number' ? `${(r.ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(' · ');
+  for (const [nota, emoji, titulo] of [[1, '👍', 'Boa resposta'], [-1, '👎', 'Resposta ruim']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = emoji;
+    b.title = titulo;
+    b.classList.toggle('marcado', r.nota === nota);
+    b.onclick = async () => {
+      const nova = r.nota === nota ? 0 : nota; // clicar de novo desmarca
+      let comentario;
+      if (nova === -1) comentario = prompt('O que faltou nessa resposta? (opcional, ajuda a escolher a melhor IA)') ?? undefined;
+      try {
+        const r2 = await fetch(`api/ordens/${encodeURIComponent(ordem.id)}/avaliacao`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ indice, nota: nova, comentario }),
+        });
+        if (!r2.ok) throw new Error((await r2.json().catch(() => ({}))).erro || `HTTP ${r2.status}`);
+        aoOrdem(await r2.json(), { nova: false });
+      } catch (erro) {
+        avisar(`Não consegui salvar a avaliação: ${erro.message}`, true);
+      }
+    };
+    meta.appendChild(b);
+  }
+  if (!r.erro && !/^(Erro:|Interrompida:)/.test(r.texto)) {
+    const ajustar = document.createElement('button');
+    ajustar.type = 'button';
+    ajustar.className = 'ajustar';
+    ajustar.textContent = '↩ ajustar';
+    ajustar.title = `Pedir para ${nomeDe(r.agente)} refazer esta entrega`;
+    ajustar.onclick = async () => {
+      const pedido = prompt(`O que ${nomeDe(r.agente)} deve mudar nesta entrega?`, '');
+      if (!pedido?.trim()) return;
+      try {
+        await integracao.pedirAjuste(ordem.id, indice, pedido);
+        avisar(`↩ ${nomeDe(r.agente)} vai ajustar a entrega.`);
+      } catch (erro) {
+        avisar(`Não consegui pedir o ajuste: ${erro.message}`, true);
+      }
+    };
+    meta.appendChild(ajustar);
+  }
+  meta.appendChild(info);
+  if (r.comentario) {
+    const c = document.createElement('div');
+    c.className = 'coment';
+    c.textContent = `“${r.comentario}”`;
+    const box = document.createElement('div');
+    box.append(meta, c);
+    return box;
+  }
+  return meta;
 }
 
 function aoOrdem(ordem, { nova }) {
@@ -286,17 +435,35 @@ function aoOrdem(ordem, { nova }) {
   }
 
   if (!nova) return;
-  if (ordem.de && ordem.de !== 'chefe') return; // delegada entre agentes: o seu bonequinho não precisa ir
+  if (ordem.de && ordem.de !== 'chefe') {
+    // delegada entre agentes: o seu bonequinho não vai, mas a decisão passa pelo Crânio (feixe até o agente)
+    const e = estacoes.get(ordem.para);
+    if (ordem.decisao && ordem.decisao.modo !== 'indisponivel' && cranio.grupo.visible && e) {
+      cranio.decidir(e.boneco.raiz.getWorldPosition(new THREE.Vector3()), resumoCranio(ordem.decisao));
+    }
+    return;
+  }
   if (ordem.local) avisar('Sem servidor, a ordem fica só na simulação. Rode "node servidor.js" para ela chegar aos seus motores.');
   else avisar(chefe.ocupado() ? 'Ordem na fila: o seu bonequinho entrega assim que terminar a anterior.' : '');
   const todos = ordem.para === 'todos';
   const alvos = todos ? [...estacoes.values()] : [estacoes.get(ordem.para)].filter(Boolean);
   if (!todos && !alvos.length) return integracao.cumprirNaSimulacao(ordem); // agente sem mesa
   const balao = etiquetaChefe.element.querySelector('.balao');
+  // ordem decidida pelo Crânio: o bonequinho passa lá antes, e o Crânio mostra a decisão
+  let parada;
+  if (ordem.decisao && ordem.decisao.modo !== 'indisponivel' && cranio.grupo.visible && alvos.length === 1) {
+    const resumo = resumoCranio(ordem.decisao);
+    parada = {
+      ...cranio.parada(chefe.grupo),
+      tempo: 2.4,
+      aoChegar: () => cranio.decidir(alvos[0].boneco.raiz.getWorldPosition(new THREE.Vector3()), resumo),
+    };
+  }
   chefe.darOrdem({
     texto: ordem.texto,
     alvos,
     todos,
+    parada,
     aoFalar(texto) {
       balao.textContent = todos ? `Pessoal: ${texto}` : texto;
       balao.classList.add('visivel');
@@ -315,6 +482,16 @@ enquadrarTudo();
 
 const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
+  aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
+  aoClientes: (lista) => gestao?.definirClientes(lista),
+  aoDecisor({ ativo, online }) {
+    cranio.grupo.visible = ativo;
+    cranio.definirOnline(online);
+    if (ativo === decisorAtivo) return;
+    decisorAtivo = ativo;
+    montarPainel();
+    for (const id of estacoes.keys()) mostrarStatus(id);
+  },
   aoOrdem,
   ids: () => [...estacoes.keys()],
   aoAtualizar(id, dados) {
@@ -328,6 +505,13 @@ integracao = criarIntegracao({
     }
     mostrarStatus(id);
     return true;
+  },
+  aoRemovido(id) {
+    const i = agentes.findIndex((a) => a.id === id);
+    if (i < 0) return;
+    agentes.splice(i, 1);
+    montar();
+    enquadrarTudo();
   },
   aoNovoAgente(dados) {
     if (estacoes.has(dados.id)) return;
@@ -351,7 +535,20 @@ integracao = criarIntegracao({
   aoConexao(texto, online) {
     conexao.textContent = `● ${texto}`;
     conexao.classList.toggle('online', online);
+    // ao conectar no servidor, busca os clientes (para o seletor da barra de ordens)
+    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); }
   },
+});
+
+janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
+criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, pedirAjuste: (...a) => integracao.pedirAjuste(...a) });
+gestao = criarGestao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, agentesVisiveis: () => [...estacoes.keys()], aoMudarClientes: atualizarClientes });
+
+configuracao = criarConfiguracao({
+  agentesVisiveis: () => [...estacoes.keys()],
+  aoRemover: (id) => integracao.removerLocal(id),
+  nomeDe,
+  servidorAtivo: () => integracao.servidorAtivo(),
 });
 
 // ---------- loop ----------
@@ -379,6 +576,7 @@ function quadro() {
   if (redesenhar) acumTela = 0;
 
   chefe.atualizar(dt, t);
+  if (cranio.grupo.visible) cranio.atualizar(dt, t);
   if (redesenhar) desenharTela(chefe.estacao.tela, chefe.agente, chefe.digitando ? 'trabalhando' : 'ocioso', t);
 
   for (const e of estacoes.values()) {

@@ -3,6 +3,7 @@
 #   cp motores.exemplo.json motores.json  (qual IA cada agente usa)
 #   docker compose up -d                              → http://IP-DO-VPS:8787
 #   docker compose --profile https up -d              → https://SEU-DOMINIO (precisa de DOMINIO no .env)
+#   Dica: COMPOSE_PROFILES=https,laya no .env liga os extras sem precisar do --profile.
 services:
   escritorio:
     build: .
@@ -15,6 +16,17 @@ services:
     volumes:
       - dados:/app/dados
       - ./motores.json:/app/motores.json:ro
+
+  # Laya: decide qual agente cuida das ordens "Automático". Ligue com o perfil "laya"
+  # e LAYA_URL=http://laya:8000 no .env. Precisa de ~3 GB de RAM livres.
+  laya:
+    build: ./laya
+    profiles: ["laya"]
+    restart: unless-stopped
+    environment:
+      LAYA_THREADS: ${LAYA_THREADS:-2}
+    volumes:
+      - laya-cache:/cache
 
   # HTTPS automático (Let's Encrypt). Aponte o DNS do domínio para o VPS antes.
   https:
@@ -34,3 +46,4 @@ services:
 volumes:
   dados:
   caddy:
+  laya-cache:
