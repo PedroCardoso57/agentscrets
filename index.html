@@ -28,7 +28,7 @@
     <div id="hoje" aria-label="Resumo de hoje">
       <div class="kpi" title="Entregas feitas hoje"><b data-kpi="entregas">0</b><span>entregas hoje</span></div>
       <div class="kpi" title="Agentes trabalhando agora"><b data-kpi="trabalhando">0</b><span>trabalhando</span></div>
-      <div class="kpi" title="Erros hoje (veja no painel de ordens)"><b data-kpi="erros">0</b><span>erros</span></div>
+      <button type="button" class="kpi" id="abrir-erros" title="Erros de hoje · clique para abrir o registro de erros"><b data-kpi="erros">0</b><span>erros</span></button>
       <div class="kpi largo" title="Próxima rotina agendada"><b data-kpi="rotina">—</b><span data-kpi="rotina-nome">próxima rotina</span></div>
     </div>
     <div id="conexao" title="Origem dos status">● demo</div>
@@ -75,6 +75,20 @@
 
   <dialog id="dlg-equipe" aria-labelledby="titulo-equipe">
     <header><h2 id="titulo-equipe">Equipe · qual IA cada agente usa</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-erros" aria-labelledby="titulo-erros">
+    <header>
+      <h2 id="titulo-erros">Registro de erros</h2>
+      <select name="tipo" aria-label="Tipo">
+        <option value="todos">Todos</option>
+        <option value="agente">Agentes (IA)</option>
+        <option value="github">GitHub</option>
+        <option value="aviso">Avisos do supervisor</option>
+      </select>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
     <div class="corpo"></div>
   </dialog>
 

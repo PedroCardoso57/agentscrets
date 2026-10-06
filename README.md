@@ -126,7 +126,16 @@ Use a barra de baixo da tela:
 1. Escolha para quem é a ordem (um agente ou **todos**). Clicar num agente no painel ou na cena já seleciona ele. Também dá para começar a ordem com `@backend ...`.
 2. Escreva e aperte **Enviar**.
 3. O seu bonequinho levanta, vai até a mesa do agente (ou para a frente da equipe, se for para todos), fala a ordem e volta. O agente vira na cadeira para ouvir.
-4. A ordem aparece em **Ordens** no painel, com o andamento: *aguardando motor* → *entregue ao motor* → *respondida*. A resposta do motor também aparece no balão do agente.
+4. A ordem aparece em **Ordens** no painel. A resposta também aparece no balão do agente.
+
+**Como ler a lista de ordens:**
+
+- Cada ordem sua é um cartão. As tarefas que o Tech Lead passou ao time ficam **dentro** do cartão (com barra de progresso), e a entrega final aparece no topo dele.
+- A situação é contada do seu ponto de vista: ⏳ aguardando · ⚙️ em andamento · 🔁 tentando de novo · ⚠️ precisa de você · ✅ concluída. Uma ordem com plano só fica concluída quando todas as tarefas e a entrega final terminam.
+- **NOVA** marca o cartão com resposta que você ainda não abriu (clique no cartão para marcar como vista). O número na aba Ordens soma as novas e as que precisam de você.
+- Filtros no topo: Novas · Em andamento · Precisa de você · Concluídas · Todas. Cartões concluídos e já vistos ficam recolhidos.
+
+**Registro de erros:** as mensagens de erro (das IAs, do GitHub e os avisos do supervisor) não aparecem mais no meio das respostas nem como aviso na tela. Ficam num lugar só: clique em **erros** na faixa Hoje ou em **🗒 registro de erros** no painel de ordens. No cartão aparece só a situação (ex.: "tenta de novo às 17:43") com um link "ver erro".
 
 Sem o servidor rodando (ou no modo demo), os agentes simulados cumprem a ordem e respondem, marcados como *simulação*. Com `node servidor.js`, a ordem vai de verdade para os seus motores.
 
