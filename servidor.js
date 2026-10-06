@@ -575,7 +575,11 @@ async function atender(req, res) {
   if (!caminho.startsWith(RAIZ)) { res.writeHead(403); return res.end(); }
   try {
     const conteudo = await readFile(caminho);
-    res.writeHead(200, { 'Content-Type': TIPOS[extname(caminho)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': TIPOS[extname(caminho)] || 'application/octet-stream',
+      // a página sempre pega a versão nova depois de um deploy; só a biblioteca 3D (que não muda) fica em cache
+      'Cache-Control': partes[1] === 'vendor' ? 'public, max-age=604800' : 'no-cache, no-store, must-revalidate',
+    });
     res.end(conteudo);
   } catch {
     res.writeHead(404); res.end('não encontrado');
