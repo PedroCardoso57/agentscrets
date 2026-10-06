@@ -12,6 +12,9 @@
 //   Netlify, Cloudflare Pages…), o endereço de cada PR e o de produção (depois do
 //   merge) são lidos do GitHub e aparecem na entrega, na ficha e no Telegram.
 //
+// - Netlify (opcional): com NETLIFY_TOKEN e NETLIFY_INSTALACAO, cada repositório
+//   novo já ganha um site no Netlify ligado a ele (previews por PR e produção).
+//
 // .env: GITHUB_TOKEN (fine-grained: Administration, Contents, Pull requests e
 // Workflows em Read and write; Actions, Commit statuses e Deployments em Read-only),
 // GITHUB_DONO (organização onde criar; padrão: a conta do token), GITHUB_PREFIXO
@@ -21,6 +24,7 @@ import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const API = process.env.GITHUB_API || 'https://api.github.com'; // trocável só para testes
+const NETLIFY_API = process.env.NETLIFY_API || 'https://api.netlify.com/api/v1';
 const MAX_ARQUIVOS = 80;
 const MAX_TAMANHO = 400_000;
 const MAX_CORRECOES = 3;
@@ -107,6 +111,62 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
   const cacheArvore = new Map(); // cliente → { em, texto }
 
   const ativo = () => Boolean(token);
+  const netlifyToken = process.env.NETLIFY_TOKEN;
+  const netlifyInstalacao = Number(process.env.NETLIFY_INSTALACAO) || 0; // id da instalação do app do Netlify no GitHub
+  const netlifyAtivo = () => Boolean(netlifyToken && netlifyInstalacao);
+
+  async function netlify(metodo, caminho, corpo) {
+    const r = await fetch(`${NETLIFY_API}${caminho}`, {
+      method: metodo,
+      headers: { Authorization: `Bearer ${netlifyToken}`, 'User-Agent': 'escritorio-agentes', ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    });
+    const dados = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const erro = new Error(`Netlify ${metodo} ${caminho.split('?')[0]}: ${r.status} ${dados.message || dados.errors ? JSON.stringify(dados.errors || dados.message).slice(0, 200) : ''}`.trim());
+      erro.status = r.status;
+      throw erro;
+    }
+    return dados;
+  }
+
+  // Cria o site no Netlify ligado ao repositório (build: npm run build → dist; o netlify.toml do projeto manda mais).
+  async function garantirNetlify(repo) {
+    if (!netlifyAtivo() || repo.netlify) return;
+    if (repo.netlifyErroEm && Date.now() - Date.parse(repo.netlifyErroEm) < 3600000) return; // tenta de novo em 1 h
+    const caminho = process.env.NETLIFY_EQUIPE ? `/${process.env.NETLIFY_EQUIPE}/sites` : '/sites';
+    const corpo = (nome) => ({
+      name: nome,
+      repo: { provider: 'github', repo: `${repo.dono}/${repo.nome}`, private: true, branch: repo.padrao, cmd: 'npm run build', dir: 'dist', installation_id: netlifyInstalacao },
+    });
+    try {
+      let site;
+      try { site = await netlify('POST', caminho, corpo(repo.nome.toLowerCase())); } catch (erro) {
+        if (erro.status !== 422) throw erro; // nome já usado por outro site do Netlify: põe um sufixo
+        site = await netlify('POST', caminho, corpo(`${repo.nome.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`));
+      }
+      repo.netlify = { id: site.id || site.site_id, url: site.ssl_url || site.url, admin: site.admin_url };
+      delete repo.netlifyErroEm;
+      console.log(`[netlify] site criado para ${repo.nome}: ${repo.netlify.url}`);
+      informar?.(`🌐 Site no Netlify criado para ${repo.nome}: ${repo.netlify.url} (cada PR ganha um preview)`);
+    } catch (erro) {
+      repo.netlifyErroEm = new Date().toISOString();
+      console.warn(`[netlify] não consegui criar o site de ${repo.nome}: ${erro.message}`);
+    }
+    await gravar();
+    mudou();
+  }
+
+  // Deploy pronto de um commit no Netlify: preview do PR ou produção (endereço principal do site).
+  async function deployNetlify(repo, sha, contexto) {
+    if (!netlifyToken || !repo.netlify?.id || !sha) return null;
+    try {
+      const deploys = await netlify('GET', `/sites/${repo.netlify.id}/deploys?per_page=30`);
+      const d = (deploys || []).find((x) => x.commit_ref === sha && x.state === 'ready' && (!contexto || x.context === contexto));
+      if (!d) return null;
+      return contexto === 'production' ? repo.netlify.url : d.deploy_ssl_url || d.links?.permalink || d.deploy_url;
+    } catch { return null; }
+  }
 
   async function gh(metodo, caminho, corpo, { texto = false } = {}) {
     const r = await fetch(`${API}${caminho}`, {
@@ -180,6 +240,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     } catch (erro) {
       console.warn(`[github] não consegui criar o CI (${erro.message}). Dê ao token a permissão "Workflows: Read and write" para testar os PRs.`);
     }
+    await garantirNetlify(repo);
     await gravar();
     mudou();
     return repo;
@@ -295,7 +356,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
 
   async function procurarPreview(pr, repo) {
     if (pr.previewSha === pr.sha) return;
-    const url = await enderecoDeploy(repo, pr.sha);
+    const url = (await deployNetlify(repo, pr.sha, 'deploy-preview')) || (await enderecoDeploy(repo, pr.sha));
     if (!url) return;
     const primeiro = !pr.preview;
     pr.previewSha = pr.sha;
@@ -306,7 +367,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
 
   // Depois do merge: o endereço de produção do projeto.
   async function procurarProducao(pr, repo) {
-    const url = await enderecoDeploy(repo, pr.mergeSha);
+    const url = (await deployNetlify(repo, pr.mergeSha, 'production')) || (await enderecoDeploy(repo, pr.mergeSha));
     if (url) {
       repo.producao = url;
       pr.producaoOk = true;
@@ -388,6 +449,8 @@ ${diff}`,
 
   // Acompanha os PRs abertos pelo escritório: CI, revisão, preview e produção.
   async function conferir() {
+    // repositórios criados antes do Netlify ser configurado também ganham o site
+    for (const repo of Object.values(repos)) if (netlifyAtivo() && !repo.netlify) await garantirNetlify(repo);
     for (const pr of prs) {
       const repo = repos[pr.cliente];
       if (!repo) continue;
@@ -428,6 +491,8 @@ ${diff}`,
     if (!ativo()) return;
     relogio ??= setInterval(() => conferir().catch(() => {}), Number(process.env.GITHUB_INTERVALO_MS) || 60000);
     relogio.unref?.();
+    if (netlifyToken && !netlifyInstalacao) console.warn('[netlify] NETLIFY_TOKEN sem NETLIFY_INSTALACAO: coloque o número da instalação do app do Netlify no GitHub para criar os sites sozinho.');
+    else if (netlifyAtivo()) console.log('[netlify] ligado: cada repositório novo ganha um site no Netlify');
     console.log(`[github] ligado: cada projeto vira um repositório${revisao ? ', o QA revisa cada PR' : ''}${autoMerge ? ', merge automático quando o CI passa' : ''}`);
   }
 

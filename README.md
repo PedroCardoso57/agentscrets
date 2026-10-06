@@ -303,6 +303,12 @@ Ligue os repositórios a um serviço de deploy que publica cada PR sozinho: **Cl
 - depois do merge, o endereço de produção aparece na ficha do cliente (No ar:) e no Telegram;
 - se o build do preview falhar, o erro volta para o agente corrigir, como o CI.
 
+**Netlify automático:** com `NETLIFY_TOKEN` e `NETLIFY_INSTALACAO` no `.env`, cada repositório que o escritório cria já ganha um site no Netlify ligado a ele (build `npm run build`, pasta `dist`; o `netlify.toml` do projeto pode mudar isso). Você não precisa importar nada à mão.
+
+- `NETLIFY_TOKEN`: Netlify → User settings → Applications → Personal access tokens → New access token.
+- `NETLIFY_INSTALACAO`: no GitHub, Settings → Applications → Netlify → Configure; é o número no fim do endereço (`.../installations/12345678`). Deixe o app com acesso a **All repositories**.
+- `NETLIFY_EQUIPE` (opcional): o slug do time no Netlify, se não for o time padrão.
+
 O escritório só lê os endereços que o GitHub informa; o código gerado nunca roda no seu VPS. Esses serviços publicam sites e front-ends (React, Vue, páginas estáticas, funções). Um back-end com banco de dados precisa de um serviço próprio (ex.: Render, Railway, Fly.io), que também pode ser ligado ao repositório.
 
 **Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write), mais **Actions**, **Commit statuses** e **Deployments** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
