@@ -41,6 +41,7 @@ import { criarClientes } from './motores/clientes.js';
 import { criarRotinas, ontem } from './motores/rotinas.js';
 import { criarSupervisor } from './motores/supervisor.js';
 import { criarAutopiloto } from './motores/autopiloto.js';
+import { criarRepositorios } from './motores/repositorios.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -173,6 +174,8 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
   if (ordem.reexecutando) ordem.reexecutando = ordem.reexecutando.filter((a) => a !== agente);
   // vira arquivo .md no arquivo de entregas
   entregas.registrar(ordem, ordem.respostas.length - 1).catch((erro) => console.error('[entregas]', erro.message));
+  // código entregue num projeto com repositório vira commit + pull request
+  repositorios?.publicarEntrega(ordem, ordem.respostas.length - 1);
   // vira evento da documentação viva (o trecho basta para o documentador resumir)
   documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`, ordem.cliente);
 }
@@ -255,6 +258,9 @@ function pedirAjuste({ ordemId, indice, texto, origem }) {
 }
 let documentacao = null; // criada logo abaixo, depois dos motores
 const clientes = criarClientes({ dadosDir: DADOS_DIR });
+let repositorios = null; // criado logo abaixo (precisa do pedirAjuste)
+// lista de clientes para a página, com o endereço do repositório de cada projeto
+const clientesComRepo = () => clientes.listar().map((c) => ({ ...c, repo: repositorios?.repoDe(c.id)?.url || null }));
 const rotinas = criarRotinas({
   dadosDir: DADOS_DIR,
   disparar: (r) => ordemDoChefe({ para: r.para, texto: r.texto, cliente: r.cliente, origem: { rotina: r.id }, anexo: r.resumoOntem ? materialDoDia(ontem()) : undefined }),
@@ -299,7 +305,32 @@ const telegram = criarTelegram({
   rotinas: () => rotinas.listar(),
 });
 const entregas = criarEntregas({ dadosDir: DADOS_DIR, nomeCliente: (id) => clientes.nomeDe(id), aoNova: (e, conteudo) => telegram.enviarEntrega({ ...e, conteudo, origem: ordens.find((o) => o.id === e.ordemId)?.origem }) });
-const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)), fichaCliente: (id) => clientes.ficha(id) });
+repositorios = criarRepositorios({
+  dadosDir: DADOS_DIR,
+  ordens,
+  clientes,
+  mudou: (ordem) => (ordem ? transmitir('ordem', ordem) : transmitirSemSalvar('clientes', clientesComRepo())),
+  pedirCorrecao: (dados) => pedirAjuste(dados), // CI falhou: o mesmo agente corrige no mesmo PR
+  avisar: (texto) => { transmitirSemSalvar('aviso', { texto }); telegram.avisar(texto); },
+  informar: (texto) => telegram.avisar(texto),
+});
+
+// O que os agentes recebem sobre o repositório do projeto: endereço, estrutura e como entregar arquivos.
+async function contextoCodigo(cliente) {
+  if (!repositorios.ativo()) return '';
+  const repo = repositorios.repoDe(cliente);
+  const estrutura = repo ? await repositorios.arvore(cliente) : '(repositório novo: será criado com a sua entrega)';
+  return `Este projeto tem um repositório Git${repo ? ` (${repo.url})` : ''}. Tudo o que for arquivo do projeto (código, configuração, documentação), entregue COMPLETO, cada arquivo num bloco assim:
+\`\`\`ts arquivo: caminho/relativo/do/arquivo.ts
+conteúdo completo do arquivo
+\`\`\`
+Os arquivos viram um pull request e passam pelo CI (instalar, compilar e testar): ao criar um projeto, inclua o package.json (ou requirements.txt) com scripts de build e test, e testes das regras principais. Para alterar um arquivo existente, use o mesmo caminho e entregue o arquivo inteiro.
+
+Estrutura atual do repositório:
+${estrutura}`;
+}
+
+const motores = criarMotores({ raiz: RAIZ, dadosDir: DADOS_DIR, ordens, registrarStatus, marcarEntregue, registrarResposta, atualizarOrdem, criarOrdem: (dados) => encaminhar(dados).catch((erro) => console.error(erro)), fichaCliente: (id) => clientes.ficha(id), contextoCodigo });
 const supervisor = criarSupervisor({
   ordens,
   equipe: () => motores.equipe(),
@@ -429,15 +460,15 @@ async function atender(req, res) {
   }
 
   // ---------- clientes ----------
-  if (rota === '/api/clientes' && req.method === 'GET') return enviarJSON(res, 200, clientes.listar());
+  if (rota === '/api/clientes' && req.method === 'GET') return enviarJSON(res, 200, clientesComRepo());
   const cliente = rota.match(/^\/api\/clientes(?:\/([\w-]{1,40}))?$/);
   if (cliente && (req.method === 'POST' || req.method === 'DELETE')) {
     try {
-      if (req.method === 'DELETE') { await clientes.remover(cliente[1]); transmitirSemSalvar('clientes', clientes.listar()); return enviarJSON(res, 200, clientes.listar()); }
+      if (req.method === 'DELETE') { await clientes.remover(cliente[1]); transmitirSemSalvar('clientes', clientesComRepo()); return enviarJSON(res, 200, clientesComRepo()); }
       const salvo = await clientes.salvar(cliente[1], await lerCorpo(req));
       documentacao.registrar(`Ficha do cliente ${cliente[1] ? 'atualizada' : 'criada'}: ${clientes.ficha(salvo.id).slice(0, 2000)}`, salvo.id);
       documentacao.registrar(`Clientes: projeto ${salvo.nome} ${cliente[1] ? 'atualizado' : 'cadastrado'}`);
-      transmitirSemSalvar('clientes', clientes.listar());
+      transmitirSemSalvar('clientes', clientesComRepo());
       return enviarJSON(res, 200, salvo);
     } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
   }
@@ -658,6 +689,8 @@ motores.iniciar(estado);
 supervisor.iniciar();
 await autopiloto.carregar();
 autopiloto.iniciar();
+await repositorios.carregar();
+repositorios.iniciar();
 decisor.verificar();
 servidor.listen(PORTA, HOST, () => {
   console.log(`Escritório aberto em http://${SO_LOCAL ? 'localhost' : HOST}:${PORTA}${SENHA ? ' (com senha)' : ''}`);
