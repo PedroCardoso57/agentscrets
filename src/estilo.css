@@ -159,9 +159,11 @@ button, input, select, textarea { font-family: inherit; }
 #lista-ordens .cab b { color: var(--texto); font-weight: 700; }
 #lista-ordens .cab .hora { font-size: 10px; color: var(--suave); margin-left: auto; }
 #lista-ordens .chip { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; background: #ffffff12; white-space: nowrap; }
-#lista-ordens .chip.pendente { color: var(--aguardando); }
-#lista-ordens .chip.entregue { color: var(--concluido); }
-#lista-ordens .chip.respondida { color: var(--trabalhando); }
+#lista-ordens .chip.fila { color: var(--aguardando); }
+#lista-ordens .chip.andamento { color: var(--concluido); }
+#lista-ordens .chip.tentando { color: var(--aguardando); }
+#lista-ordens .chip.problema { color: #fff; background: var(--erro); }
+#lista-ordens .chip.concluida { color: var(--trabalhando); }
 #lista-ordens .texto { font-weight: 500; }
 #lista-ordens .decisao { margin-top: 4px; font-size: 11px; color: #c9b8ff; }
 #lista-ordens .decisao.alerta { color: var(--aguardando); }
@@ -419,7 +421,9 @@ dialog button.link { background: none; border: none; color: #ff8a92; cursor: poi
 
 /* supervisor: tentativas e planos */
 #lista-ordens .chip.falhou { color: var(--erro); }
-#lista-ordens .plano { margin-top: 5px; font-size: 11px; font-weight: 600; color: #d4d4d8; }
+#lista-ordens .plano { margin-top: 6px; font-size: 11px; font-weight: 600; color: #d4d4d8; display: flex; align-items: center; gap: 8px; }
+#lista-ordens .plano .trilho { flex: 0 0 70px; height: 5px; border-radius: 99px; background: #ffffff14; overflow: hidden; }
+#lista-ordens .plano .trilho i { display: block; height: 100%; background: var(--trabalhando); border-radius: inherit; transition: width .4s; }
 #lista-ordens .supervisor { margin-top: 5px; font-size: 11px; color: #ffb4b9; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 #lista-ordens .supervisor button { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 7px; cursor: pointer; color: #fff; background: var(--marca); border: none; }
 #lista-ordens .supervisor button:disabled { opacity: .5; }
@@ -440,3 +444,51 @@ dialog button.link { background: none; border: none; color: #ff8a92; cursor: poi
 #lista-ordens .pr-github { margin-top: 5px; font-size: 11px; color: var(--suave); }
 #lista-ordens .pr-github a, dialog .cfg-form a { color: #8fd3ff; font-weight: 700; text-decoration: none; }
 #lista-ordens .pr-github a:hover { text-decoration: underline; }
+
+/* ---------- ordens: filtros, situação, novas, tarefas do plano ---------- */
+.filtros-ordens { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+.filtros-ordens .filtro {
+  font: inherit; font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: 99px; cursor: pointer;
+  color: var(--suave); background: #ffffff0a; border: 1px solid var(--borda);
+}
+.filtros-ordens .filtro:hover { color: var(--texto); }
+.filtros-ordens .filtro.ativo { color: var(--texto); background: var(--marca-suave); border-color: var(--marca); }
+.filtros-ordens .filtro span { margin-left: 5px; padding: 0 6px; border-radius: 99px; background: #ffffff1c; color: var(--texto); }
+.filtros-ordens .filtro.novas span { background: var(--marca); }
+.filtros-ordens .filtro.problema span { background: var(--erro); }
+.filtros-ordens .registro-erros, .filtros-ordens .marcar-vistas { background: none; border-color: transparent; padding-inline: 4px; font-weight: 500; }
+.filtros-ordens .registro-erros { margin-left: auto; }
+#lista-ordens > li .cab, #lista-ordens > li > .texto { cursor: pointer; }
+#lista-ordens > li.recolhido > .texto { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #d4d4d8; }
+#lista-ordens > li.sit-concluida.recolhido { opacity: .78; }
+#lista-ordens > li.sit-problema { border-color: #ff4d5755; background: #ff4d570d; }
+#lista-ordens > li.nova { box-shadow: 0 0 0 1px var(--marca); }
+#lista-ordens .selo-nova { font-size: 9px; font-weight: 800; letter-spacing: .06em; padding: 2px 6px; border-radius: 5px; color: #fff; background: var(--marca); }
+#lista-ordens .resp.planejamento { background: none; border: 1px dashed var(--borda); }
+#lista-ordens .resp.planejamento::before { content: 'Plano do Tech Lead'; display: block; font-size: 10px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+#lista-ordens .titulo-tarefas { margin: 9px 0 3px; font-size: 10px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+#lista-ordens .espera { margin-top: 6px; font-size: 11px; color: var(--suave); font-style: italic; }
+#lista-ordens .tarefa-plano { margin-top: 4px; border-radius: 9px; background: #00000026; border-left: 3px solid var(--cor, var(--borda)); padding: 5px 8px; }
+#lista-ordens .tarefa-plano .tarefa-plano { margin-left: 4px; }
+#lista-ordens .tarefa-plano > summary { display: flex; align-items: baseline; gap: 6px; cursor: pointer; list-style: none; min-width: 0; }
+#lista-ordens .tarefa-plano > summary::-webkit-details-marker { display: none; }
+#lista-ordens .tarefa-plano > summary .txt { color: #d4d4d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+#lista-ordens .tarefa-plano[open] > summary .txt { white-space: normal; }
+#lista-ordens .tarefa-plano.problema { background: #ff4d5714; }
+#lista-ordens .tarefa-plano .resp { margin-top: 5px; }
+#lista-ordens .link-erros { display: block; margin-top: 5px; padding: 0; font: inherit; font-size: 11px; color: #ffb4b9; background: none; border: none; cursor: pointer; text-decoration: underline dotted; }
+#lista-ordens .supervisor .link-erros { margin: 0; padding: 0; background: none; color: #ffb4b9; font-weight: 500; font-size: 11px; }
+#hoje button.kpi { font: inherit; color: inherit; cursor: pointer; }
+#hoje button.kpi:hover { border-color: #ffffff2a; }
+
+/* ---------- registro de erros ---------- */
+#dlg-erros { width: min(760px, calc(100% - 24px)); }
+.lista-erros { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lista-erros li { padding: 9px 11px; border-radius: 10px; background: var(--cartao); border: 1px solid var(--borda); border-left: 3px solid var(--erro); font-size: 12px; }
+.lista-erros li.aviso { border-left-color: var(--aguardando); }
+.lista-erros li.github { border-left-color: var(--concluido); }
+.lista-erros .cab { display: flex; justify-content: space-between; gap: 8px; }
+.lista-erros .quando { color: var(--suave); font-size: 11px; }
+.lista-erros .pedido { margin-top: 3px; color: var(--suave); }
+.lista-erros .pedido button { font: inherit; font-size: 11px; color: #ff8a92; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
+.lista-erros pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #ffd0d3; max-height: 180px; overflow: auto; }

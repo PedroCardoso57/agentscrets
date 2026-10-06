@@ -24,13 +24,13 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
 
   // ---------- faixa "Hoje" ----------
   const kpi = (nome) => document.querySelector(`[data-kpi="${nome}"]`);
-  function atualizarKpis({ ordens = [], trabalhando = 0 } = {}) {
+  function atualizarKpis({ ordens = [], trabalhando = 0, avisosHoje = 0 } = {}) {
     let entregas = 0;
-    let erros = 0;
+    let erros = avisosHoje;
     for (const o of ordens) {
       for (const r of o.respostas) {
         if (!ehHoje(r.em) || r.simulada) continue;
-        if (r.erro || /^Erro:/.test(r.texto)) erros++; else if (!/^Interrompida:/.test(r.texto)) entregas++;
+        if (r.erro || /^(Erro:|Interrompida:)/.test(r.texto)) erros++; else if (!/^Interrompida:/.test(r.texto)) entregas++;
       }
     }
     kpi('entregas').textContent = entregas;

@@ -137,6 +137,18 @@ function transmitir(evento, dados) {
   transmitirSemSalvar(evento, dados);
 }
 
+// Registro de erros: avisos do supervisor, do GitHub etc. (os erros dos agentes ficam nas próprias ordens)
+const avisos = [];
+const ARQUIVO_AVISOS = join(DADOS_DIR, 'avisos.json');
+readFile(ARQUIVO_AVISOS, 'utf8').then((t) => avisos.push(...JSON.parse(t).slice(-300))).catch(() => {});
+function registrarAviso(texto) {
+  const aviso = { em: new Date().toISOString(), texto: String(texto).slice(0, 2000) };
+  avisos.push(aviso);
+  if (avisos.length > 300) avisos.splice(0, avisos.length - 300);
+  mkdir(DADOS_DIR, { recursive: true }).then(() => writeFile(ARQUIVO_AVISOS, JSON.stringify(avisos))).catch(() => {});
+  transmitirSemSalvar('aviso', aviso);
+}
+
 function transmitirSemSalvar(evento, dados) {
   const linha = (evento ? `event: ${evento}\n` : '') + `data: ${JSON.stringify(dados)}\n\n`;
   for (const c of conexoes) c.write(linha);
@@ -318,7 +330,7 @@ repositorios = criarRepositorios({
     if (!cfg[rev] || cfg[rev].provedor === 'webhook') return null;
     return criarOrdem({ para: rev, de: 'chefe', cliente, texto, anexo, origem: { revisaoPR: { numero, url, agente } } });
   },
-  avisar: (texto) => { transmitirSemSalvar('aviso', { texto }); telegram.avisar(texto); },
+  avisar: (texto) => { registrarAviso(texto); telegram.avisar(texto); },
   informar: (texto) => telegram.avisar(texto),
 });
 
@@ -351,7 +363,7 @@ const supervisor = criarSupervisor({
     motores.despachar(ordem);
   },
   avisarChefe(texto) {
-    transmitirSemSalvar('aviso', { texto });
+    registrarAviso(texto);
     telegram.avisar(texto);
     documentacao?.registrar(texto);
   },
@@ -365,7 +377,7 @@ const autopiloto = criarAutopiloto({
   docDe: (projeto) => documentacao.resumo(projeto).texto,
   entregasDe: (projeto) => entregas.listar({ cliente: projeto }).itens,
   planoAberto: (projeto) => supervisor.planoAberto(projeto),
-  avisar: (texto) => { transmitirSemSalvar('aviso', { texto }); telegram.avisar(texto); },
+  avisar: (texto) => { registrarAviso(texto); telegram.avisar(texto); },
 });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
@@ -427,6 +439,8 @@ async function atender(req, res) {
 
   if (rota === '/api/estado') return enviarJSON(res, 200, [...estado.values()]);
   // marca do escritório (topo da página e placa na parede)
+  if (rota === '/api/erros') return enviarJSON(res, 200, avisos.slice().reverse());
+
   if (rota === '/api/marca') {
     return enviarJSON(res, 200, {
       nome: (process.env.MARCA_NOME || 'agentscrets').slice(0, 40),

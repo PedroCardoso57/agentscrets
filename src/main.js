@@ -14,6 +14,7 @@ import { criarGestao } from './gestao.js';
 import { criarInterface } from './interface.js';
 import { Efeitos } from './efeitos.js';
 import { Vida } from './vida.js';
+import { criarRegistroErros } from './erros.js';
 
 // ---------- renderização ----------
 
@@ -237,8 +238,8 @@ function mostrarStatus(id) {
 // faixa "Hoje" e contador de ordens em andamento
 function atualizarHoje() {
   const ordens = [...ordensVistas.values()].map((v) => v.ordem);
-  ui.atualizarKpis({ ordens, trabalhando: [...estacoes.values()].filter((x) => x.estado === 'trabalhando').length });
-  ui.contador('ordens', ordens.filter((o) => o.estado !== 'respondida').length);
+  ui.atualizarKpis({ ordens, trabalhando: [...estacoes.values()].filter((x) => x.estado === 'trabalhando').length, avisosHoje: registroErros?.avisosHoje() || 0 });
+  registroErros?.atualizar();
   // a TV da sala de reunião mostra os mesmos números
   const kpi = (n) => document.querySelector(`[data-kpi="${n}"]`)?.textContent || '0';
   definirPainelTV({ entregas: kpi('entregas'), trabalhando: kpi('trabalhando'), erros: kpi('erros'), projetos: listaClientes.length, proxima: `${kpi('rotina')} ${kpi('rotina-nome') === 'próxima rotina' ? '' : kpi('rotina-nome')}`.trim() });
@@ -351,8 +352,8 @@ function nomeDe(id) {
   return id === 'todos' ? 'todos' : estacoes.get(id)?.agente.nome || id;
 }
 
-const ROTULO_ORDEM = { pendente: 'aguardando motor', entregue: 'entregue ao motor', respondida: 'respondida', falhou: 'com erro' };
 
+let registroErros = null; // registro de erros (criado depois da integração)
 const expandidas = new Set(); // respostas abertas com "ver mais"
 const todasOrdens = () => [...ordensVistas.values()].map((v) => v.ordem);
 const corDe = (id) => estacoes.get(id)?.agente.cor || 'var(--marca)';
@@ -375,113 +376,331 @@ async function pedirAjusteDe(ordem, indice, agente) {
   }
 }
 
+// ---------- lista de ordens ----------
+// Cada ordem sua é um cartão. As tarefas que o Tech Lead passou ao time, a
+// entrega final e as revisões de PR ficam dentro dele. A situação é contada do
+// seu ponto de vista: só fica "concluída" quando tudo o que ela gerou terminou.
+
+const SITUACAO = {
+  fila: { rotulo: '⏳ aguardando', classe: 'fila' },
+  andamento: { rotulo: '⚙️ em andamento', classe: 'andamento' },
+  tentando: { rotulo: '🔁 tentando de novo', classe: 'tentando' },
+  problema: { rotulo: '⚠️ precisa de você', classe: 'problema' },
+  concluida: { rotulo: '✅ concluída', classe: 'concluida' },
+};
+const FILTROS = [
+  ['novas', 'Novas'], ['andamento', 'Em andamento'], ['problema', 'Precisa de você'], ['concluidas', 'Concluídas'], ['todas', 'Todas'],
+];
+const PR_ABERTO = ['testando', 'revisando', 'corrigindo'];
+const PR_PROBLEMA = ['falhou', 'conflito'];
+const respostaFalhou = (r) => r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
+
+// o que você já viu: { desde, vistas: { id: nº de respostas vistas } } (só neste navegador)
+const memoria = (() => {
+  let m = null;
+  try { m = JSON.parse(localStorage.getItem('ordens-vistas')); } catch { /* sem armazenamento */ }
+  if (!m?.desde) m = { desde: Date.now(), vistas: {}, filtro: 'todas' }; // primeira vez: o histórico já conta como visto
+  return m;
+})();
+const guardarMemoria = () => { try { localStorage.setItem('ordens-vistas', JSON.stringify(memoria)); } catch { /* sem armazenamento */ } };
+const abertasNaMao = new Map(); // id → true/false quando você abriu ou fechou o cartão
+
+const filhasDe = (o) => todasOrdens().filter((f) => f.pai === o.id);
+const finalDe = (o) => todasOrdens().find((f) => f.consolidacao === o.id);
+const revisoesDe = (o) => todasOrdens().filter((f) => f.origem?.revisaoPR && o.respostas.some((r) => r.repo?.url && r.repo.url === f.origem.revisaoPR.url));
+const ehCartao = (o) => !o.pai && !o.consolidacao && !o.origem?.revisaoPR;
+// a ordem do topo (cartão) de uma ordem qualquer
+function cartaoDe(o) {
+  let atual = o;
+  for (let i = 0; i < 10 && atual && !ehCartao(atual); i++) {
+    const acima = todasOrdens().find((x) => x.id === (atual.pai || atual.consolidacao)) || (atual.origem?.revisaoPR && todasOrdens().find((x) => x.respostas.some((r) => r.repo?.url === atual.origem.revisaoPR.url)));
+    atual = acima || null;
+  }
+  return atual || o;
+}
+// todas as ordens de um cartão (ele, as tarefas do plano em qualquer nível e a entrega final)
+function familiaDe(o) {
+  const lista = [o];
+  for (const f of filhasDe(o)) lista.push(...familiaDe(f));
+  const final = finalDe(o);
+  if (final) lista.push(final);
+  return lista;
+}
+const respostasDaFamilia = (o) => familiaDe(o).reduce((n, x) => n + x.respostas.length, 0);
+const ultimaResposta = (o) => Math.max(0, ...familiaDe(o).flatMap((x) => x.respostas.map((r) => Date.parse(r.em) || 0)));
+
+// Situação de uma ordem sozinha (sem olhar o plano)
+function situacaoPropria(o) {
+  if (o.desistida) return o.pai ? 'concluida' : 'problema'; // tarefa de plano que não deu: o Tech Lead já replanejou
+  const prs = o.respostas.map((r) => r.repo?.estado).filter(Boolean);
+  if (o.estado === 'falhou') return Object.values(o.tentativas || {}).some((t) => t.proxima) ? 'tentando' : 'problema';
+  if (prs.some((e) => PR_PROBLEMA.includes(e))) return 'problema';
+  if (o.estado === 'pendente') return o.respostas.length ? 'andamento' : 'fila';
+  if (o.estado === 'entregue') return 'andamento';
+  if (prs.some((e) => PR_ABERTO.includes(e))) return 'andamento';
+  return 'concluida';
+}
+// Situação do cartão inteiro: o pior estado da família manda
+function situacaoDe(o) {
+  const ordem = ['problema', 'tentando', 'andamento', 'fila', 'concluida'];
+  let pior = situacaoPropria(o);
+  for (const x of familiaDe(o).slice(1)) {
+    const s = situacaoPropria(x);
+    if (ordem.indexOf(s) < ordem.indexOf(pior)) pior = s;
+  }
+  // plano montado e tarefas prontas, mas a entrega final ainda vai ser pedida
+  if (pior === 'concluida' && filhasDe(o).length && !o.consolidada) pior = 'andamento';
+  if (pior === 'fila' && familiaDe(o).length > 1) pior = 'andamento';
+  return pior;
+}
+const ehNova = (o) => respostasDaFamilia(o) > (memoria.vistas[o.id] || 0) && ultimaResposta(o) > memoria.desde;
+function marcarVista(o) {
+  if (!ehNova(o)) return;
+  memoria.vistas[o.id] = respostasDaFamilia(o);
+  guardarMemoria();
+}
+function passaNoFiltro(o, f) {
+  const s = situacaoDe(o);
+  if (f === 'novas') return ehNova(o);
+  if (f === 'andamento') return ['fila', 'andamento', 'tentando'].includes(s);
+  if (f === 'problema') return s === 'problema';
+  if (f === 'concluidas') return s === 'concluida';
+  return true;
+}
+
+// Uma resposta de agente (texto, revisão, PR, avaliação)
+function blocoResposta(o, r, indice) {
+  const resp = document.createElement('div');
+  resp.className = 'resp';
+  if (respostaFalhou(r)) resp.classList.add('com-erro');
+  resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
+  resp.querySelector('b').textContent = nomeDe(r.agente);
+  const corpoResp = resp.querySelector('.corpo-resp');
+  corpoResp.textContent = r.texto + (r.simulada ? ' (simulação)' : '');
+  // respostas longas ficam recolhidas, com "ver mais"
+  const chaveResp = `${o.id}:${indice}`;
+  if (r.texto.length > 280) {
+    const aberta = expandidas.has(chaveResp);
+    corpoResp.classList.toggle('recolhida', !aberta);
+    const verMais = Object.assign(document.createElement('button'), { type: 'button', className: 'ver-mais', textContent: aberta ? 'ver menos' : 'ver mais' });
+    verMais.onclick = (ev) => { ev.stopPropagation(); if (expandidas.has(chaveResp)) expandidas.delete(chaveResp); else expandidas.add(chaveResp); renderizarOrdens(); };
+    corpoResp.after(verMais);
+  }
+  if (r.revisao?.observacoes) {
+    const obs = document.createElement('details');
+    obs.className = 'obs-revisor';
+    obs.innerHTML = '<summary>✅ revisado pelo Revisor</summary><div></div>';
+    obs.querySelector('div').textContent = r.revisao.observacoes;
+    resp.appendChild(obs);
+  } else if (r.revisao?.erro) {
+    resp.appendChild(Object.assign(document.createElement('div'), { className: 'obs-revisor', textContent: `⚠️ sem revisão: ${r.revisao.erro}` }));
+  }
+  // código no GitHub: PR e estado do CI
+  if (r.repo?.url) { // erro do GitHub vai só para o registro de erros
+    const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito ao mesclar' };
+    const linha = document.createElement('div');
+    linha.className = 'pr-github';
+    {
+      const a = Object.assign(document.createElement('a'), { href: r.repo.url, target: '_blank', rel: 'noopener', textContent: `🔀 PR #${r.repo.pr}` });
+      linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
+      if (r.repo.preview) linha.append(' · ', Object.assign(document.createElement('a'), { href: r.repo.preview, target: '_blank', rel: 'noopener', textContent: '🔎 ver preview' }));
+    }
+    resp.appendChild(linha);
+  }
+  if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
+  return resp;
+}
+
+// Tentativas do supervisor e "tentar agora"
+function linhasSupervisor(o, destino) {
+  const linkErro = () => {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'link-erros', textContent: 'ver erro' });
+    b.onclick = (ev) => { ev.stopPropagation(); registroErros?.abrir(); };
+    return b;
+  };
+  let mostrou = false;
+  for (const [agente, t] of Object.entries(o.tentativas || {})) {
+    if (o.estado !== 'falhou' && !o.desistida) continue;
+    const linha = document.createElement('div');
+    linha.className = 'supervisor';
+    const quando = t.proxima ? new Date(t.proxima).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+    // só a situação; a mensagem de erro fica no registro de erros
+    linha.textContent = o.desistida
+      ? `🔀 ${nomeDe(agente)} não conseguiu${o.pai ? ' · o Tech Lead passou para outro agente' : ' · confira a IA dele em ⚙ Equipe'}`
+      : `🔁 ${nomeDe(agente)}: ${t.n ? `${t.n}ª tentativa falhou` : 'falhou'}${quando ? ` · tenta de novo às ${quando}` : ''}`;
+    linha.appendChild(linkErro());
+    if (!o.local && !o.desistida) {
+      const botao = Object.assign(document.createElement('button'), { type: 'button', textContent: '↻ Tentar agora' });
+      botao.onclick = async (ev) => {
+        ev.stopPropagation();
+        botao.disabled = true;
+        try { await integracao.tentarDeNovo(o.id, agente); } catch (erro) { avisar(`Não consegui tentar de novo: ${erro.message}`, true); botao.disabled = false; }
+      };
+      linha.appendChild(botao);
+    }
+    destino.appendChild(linha);
+    mostrou = true;
+  }
+  // erro sem supervisor (ex.: motor externo): só o aviso discreto
+  if (!mostrou && o.estado === 'falhou') {
+    const linha = Object.assign(document.createElement('div'), { className: 'supervisor', textContent: '⚠️ deu erro' });
+    linha.appendChild(linkErro());
+    destino.appendChild(linha);
+  }
+}
+
+// Tarefa do plano (ou entrega final / revisão) dentro do cartão: uma linha que abre as respostas
+function blocoTarefa(f, rotulo) {
+  const d = document.createElement('details');
+  d.className = `tarefa-plano ${SITUACAO[situacaoDe(f)].classe}`;
+  d.style.setProperty('--cor', corDe(f.para));
+  d.open = abertasNaMao.get(`t:${f.id}`) ?? (f.consolidacao ? true : ['problema', 'tentando'].includes(situacaoDe(f)));
+  d.addEventListener('toggle', () => abertasNaMao.set(`t:${f.id}`, d.open));
+  const s = document.createElement('summary');
+  s.innerHTML = '<span class="estado"></span><b></b><span class="txt"></span>';
+  s.querySelector('.estado').textContent = SITUACAO[situacaoDe(f)].rotulo.split(' ')[0];
+  s.querySelector('.estado').title = SITUACAO[situacaoDe(f)].rotulo;
+  s.querySelector('b').textContent = rotulo || nomeDe(f.para);
+  s.querySelector('.txt').textContent = f.texto.split('\n')[0];
+  d.appendChild(s);
+  linhasSupervisor(f, d);
+  f.respostas.forEach((r, i) => { if (!respostaFalhou(r)) d.appendChild(blocoResposta(f, r, i)); });
+  for (const neta of filhasDe(f)) d.appendChild(blocoTarefa(neta));
+  if (!f.respostas.length && !filhasDe(f).length) d.appendChild(Object.assign(document.createElement('div'), { className: 'espera', textContent: f.estado === 'pendente' ? 'Na fila do agente.' : 'Trabalhando nisso…' }));
+  return d;
+}
+
+let filtroOrdens = FILTROS.some(([f]) => f === memoria.filtro) ? memoria.filtro : 'todas';
+const barraFiltros = document.createElement('div');
+barraFiltros.className = 'filtros-ordens';
+listaOrdens.before(barraFiltros);
+
+function desenharFiltros(cartoes) {
+  barraFiltros.innerHTML = '';
+  for (const [f, nome] of FILTROS) {
+    const n = f === 'todas' ? 0 : cartoes.filter((o) => passaNoFiltro(o, f)).length;
+    if (f === 'problema' && !n && filtroOrdens !== 'problema') continue; // só aparece quando há algo
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: `filtro ${f}` });
+    b.textContent = nome;
+    if (n) b.appendChild(Object.assign(document.createElement('span'), { textContent: n }));
+    b.classList.toggle('ativo', filtroOrdens === f);
+    b.onclick = () => { filtroOrdens = f; memoria.filtro = f; guardarMemoria(); renderizarOrdens(); };
+    barraFiltros.appendChild(b);
+  }
+  const reg = Object.assign(document.createElement('button'), { type: 'button', className: 'filtro registro-erros', textContent: '🗒 registro de erros', title: 'Todas as mensagens de erro' });
+  reg.onclick = () => registroErros?.abrir();
+  barraFiltros.appendChild(reg);
+  if (cartoes.some(ehNova)) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'filtro marcar-vistas', textContent: '✓ marcar como vistas' });
+    b.onclick = () => { for (const o of cartoes) memoria.vistas[o.id] = respostasDaFamilia(o); guardarMemoria(); renderizarOrdens(); };
+    barraFiltros.appendChild(b);
+  }
+}
+
 function renderizarOrdens() {
-  const todas = [...ordensVistas.values()].map((v) => v.ordem).reverse().slice(0, 20);
-  if (!todas.length) return;
+  const cartoes = todasOrdens().filter(ehCartao).reverse();
+  ui.contador('ordens', cartoes.filter((o) => ehNova(o) || situacaoDe(o) === 'problema').length || '');
+  if (!todasOrdens().length) return;
+  desenharFiltros(cartoes);
+  const visiveis = cartoes.filter((o) => passaNoFiltro(o, filtroOrdens)).slice(0, 30);
   listaOrdens.innerHTML = '';
-  for (const o of todas) {
+  if (!visiveis.length) {
+    const vazio = { novas: 'Nenhuma resposta nova. Tudo visto!', andamento: 'Nada em andamento agora.', problema: 'Nada precisando de você.', concluidas: 'Nenhuma ordem concluída ainda.' }[filtroOrdens];
+    listaOrdens.appendChild(Object.assign(document.createElement('li'), { className: 'vazio', textContent: vazio || 'Nenhuma ordem.' }));
+  }
+  for (const o of visiveis) {
+    const situacao = situacaoDe(o);
+    const nova = ehNova(o);
     const li = document.createElement('li');
     li.dataset.ordem = o.id;
+    li.className = `sit-${SITUACAO[situacao].classe}${nova ? ' nova' : ''}`;
     li.style.setProperty('--cor', corDe(o.para));
+    // aberto: o que você abriu; senão, o que ainda pede atenção
+    const aberto = abertasNaMao.get(o.id) ?? (nova || situacao !== 'concluida');
+    li.classList.toggle('recolhido', !aberto);
     li.innerHTML = '<div class="cab"><b></b><span class="hora"></span><span class="chip"></span></div><div class="texto"></div>';
     li.querySelector('.hora').textContent = horaCurta(o.criadaEm);
-    // ordens delegadas por um agente (ex.: Orquestrador) mostram quem mandou
     li.querySelector('.cab b').textContent = o.de && o.de !== 'chefe' ? `${nomeDe(o.de)} → ${nomeDe(o.para)}` : `Você → ${nomeDe(o.para)}`;
     const chip = li.querySelector('.chip');
     const simulada = o.local || o.respostas.some((r) => r.simulada);
-    chip.textContent = simulada && o.estado !== 'respondida' ? 'simulação' : ROTULO_ORDEM[o.estado] || o.estado;
-    chip.classList.add(o.estado);
+    chip.textContent = simulada && situacao !== 'concluida' ? 'simulação' : SITUACAO[situacao].rotulo;
+    chip.classList.add(SITUACAO[situacao].classe);
+    if (nova) li.querySelector('.cab').prepend(Object.assign(document.createElement('span'), { className: 'selo-nova', textContent: 'NOVA' }));
     li.querySelector('.texto').textContent = o.texto;
-    // de onde veio a ordem: cliente, ajuste de uma entrega, rotina agendada, Telegram
+    // clicar no cabeçalho abre/fecha e marca como visto
+    li.querySelector('.cab').onclick = () => { abertasNaMao.set(o.id, !aberto); marcarVista(o); renderizarOrdens(); };
+    li.querySelector('.texto').onclick = li.querySelector('.cab').onclick;
+
+    // de onde veio a ordem
     const marcas = [
       o.cliente ? `👤 ${nomeCliente(o.cliente)}${o.clienteReconhecido ? ' (reconhecido no pedido)' : ''}` : null,
       o.ajuste ? '↩ ajuste' : null,
-      o.consolidacao ? '🏁 entrega final' : null,
       o.texto.startsWith('Replanejar:') ? '🔀 replanejamento' : null,
       o.origem?.rotina ? '🗓 rotina' : null,
       o.origem?.autopiloto ? '🤖 piloto automático' : null,
       o.origem?.telegram ? '✈ Telegram' : null,
     ].filter(Boolean);
     if (marcas.length) li.querySelector('.cab').after(Object.assign(document.createElement('div'), { className: 'marcas', textContent: marcas.join(' · ') }));
-    // plano do Orquestrador: quantas tarefas já estão prontas
-    const filhos = todasOrdens().filter((f) => f.pai === o.id);
-    if (filhos.length) {
-      const prontas = filhos.filter((f) => f.desistida || f.estado === 'respondida').length;
+
+    // plano: barra de progresso das tarefas (aparece mesmo recolhido)
+    const filhas = filhasDe(o);
+    if (filhas.length) {
+      const prontas = filhas.filter((f) => situacaoDe(f) === 'concluida').length;
       const plano = document.createElement('div');
       plano.className = 'plano';
-      plano.textContent = prontas === filhos.length ? `📋 plano: ${filhos.length}/${filhos.length} prontas${o.consolidada ? ' · entrega final pedida' : ''}` : `📋 plano: ${prontas}/${filhos.length} prontas · o Orquestrador está acompanhando`;
+      const final = finalDe(o);
+      plano.innerHTML = '<span class="trilho"><i></i></span><span class="rotulo"></span>';
+      plano.querySelector('i').style.width = `${Math.round((prontas / filhas.length) * 100)}%`;
+      plano.querySelector('.rotulo').textContent = prontas < filhas.length
+        ? `${prontas} de ${filhas.length} tarefas prontas`
+        : final ? (final.respostas.some((r) => !respostaFalhou(r)) ? `${filhas.length} tarefas prontas · entrega final pronta` : `${filhas.length} tarefas prontas · montando a entrega final`)
+          : o.consolidada ? `${filhas.length} tarefas prontas` : `${filhas.length} tarefas prontas · juntando tudo`;
       li.appendChild(plano);
     }
-    // supervisor: tentativas, próxima vez e "tentar agora"
-    for (const [agente, t] of Object.entries(o.tentativas || {})) {
-      if (o.estado !== 'falhou' && !o.desistida) continue;
-      const linha = document.createElement('div');
-      linha.className = 'supervisor';
-      const quando = t.proxima ? new Date(t.proxima).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
-      linha.textContent = o.desistida
-        ? `🔀 ${nomeDe(agente)} não conseguiu: ${o.motivoDesistencia || 'erro'}`
-        : `🔁 ${nomeDe(agente)}: ${t.n ? `${t.n}ª tentativa falhou` : 'falhou'}${quando ? ` · tenta de novo às ${quando}` : ''}${t.ultimoErro ? ` · ${t.ultimoErro.slice(0, 90)}` : ''}`;
-      if (!o.local) {
-        const botao = Object.assign(document.createElement('button'), { type: 'button', textContent: '↻ Tentar agora' });
-        botao.onclick = async () => {
-          botao.disabled = true;
-          try { await integracao.tentarDeNovo(o.id, agente); } catch (erro) { avisar(`Não consegui tentar de novo: ${erro.message}`, true); botao.disabled = false; }
-        };
-        linha.appendChild(botao);
+
+    if (aberto) {
+      linhasSupervisor(o, li);
+      if (o.decisao) {
+        const d = document.createElement('div');
+        d.className = 'decisao';
+        d.textContent = textoDecisao(o.decisao);
+        if (o.decisao.ranking) d.title = `Como o Crânio pesou: ${o.decisao.ranking.map((x) => `${nomeDe(x.id)} ${Math.round(x.p * 100)}%`).join(' · ')}`;
+        d.classList.toggle('alerta', ['alertou', 'redirecionou', 'indisponivel'].includes(o.decisao.modo));
+        li.appendChild(d);
       }
-      li.appendChild(linha);
+      // a entrega final vem primeiro: é o resultado que importa
+      const final = finalDe(o);
+      if (final) li.appendChild(blocoTarefa(final, '🏁 Entrega final'));
+      o.respostas.forEach((r, indice) => {
+        if (respostaFalhou(r)) return; // erros ficam no registro de erros
+        const bloco = blocoResposta(o, r, indice);
+        if (filhas.length) bloco.classList.add('planejamento'); // a resposta do Tech Lead é o plano, não a entrega
+        li.appendChild(bloco);
+      });
+      if (filhas.length) {
+        const t = Object.assign(document.createElement('div'), { className: 'titulo-tarefas', textContent: 'Tarefas do time' });
+        li.appendChild(t);
+        for (const f of filhas) li.appendChild(blocoTarefa(f));
+      }
+      for (const rev of revisoesDe(o)) li.appendChild(blocoTarefa(rev, `🧐 Revisão do PR #${rev.origem.revisaoPR.numero}`));
+      if (!o.respostas.length && !filhas.length) li.appendChild(Object.assign(document.createElement('div'), { className: 'espera', textContent: situacao === 'fila' ? `Na fila de ${nomeDe(o.para)}.` : `${nomeDe(o.para)} está trabalhando nisso…` }));
+      if (nova) li.addEventListener('pointerenter', () => setTimeout(() => { if (li.matches(':hover')) { marcarVista(o); li.classList.remove('nova'); li.querySelector('.selo-nova')?.remove(); ui.contador('ordens', cartoes.filter((x) => ehNova(x) || situacaoDe(x) === 'problema').length || ''); } }, 1500), { once: true });
     }
-    if (o.decisao) {
-      // quem decidiu o agente (o Laya), com que certeza e a urgência
-      const d = document.createElement('div');
-      d.className = 'decisao';
-      d.textContent = textoDecisao(o.decisao);
-      if (o.decisao.ranking) d.title = `Como o Crânio pesou: ${o.decisao.ranking.map((x) => `${nomeDe(x.id)} ${Math.round(x.p * 100)}%`).join(' · ')}`;
-      d.classList.toggle('alerta', ['alertou', 'redirecionou', 'indisponivel'].includes(o.decisao.modo));
-      li.appendChild(d);
-    }
-    o.respostas.forEach((r, indice) => {
-      const resp = document.createElement('div');
-      resp.className = 'resp';
-      resp.innerHTML = '<b></b><div class="corpo-resp"></div>';
-      resp.querySelector('b').textContent = nomeDe(r.agente);
-      const corpoResp = resp.querySelector('.corpo-resp');
-      corpoResp.textContent = r.texto + (r.simulada ? ' (simulação)' : '');
-      // respostas longas ficam recolhidas, com "ver mais"
-      const chaveResp = `${o.id}:${indice}`;
-      if (r.texto.length > 280) {
-        const aberta = expandidas.has(chaveResp);
-        corpoResp.classList.toggle('recolhida', !aberta);
-        const verMais = Object.assign(document.createElement('button'), { type: 'button', className: 'ver-mais', textContent: aberta ? 'ver menos' : 'ver mais' });
-        verMais.onclick = () => { if (expandidas.has(chaveResp)) expandidas.delete(chaveResp); else expandidas.add(chaveResp); renderizarOrdens(); };
-        corpoResp.after(verMais);
-      }
-      if (r.revisao?.observacoes) {
-        const obs = document.createElement('details');
-        obs.className = 'obs-revisor';
-        obs.innerHTML = '<summary>✅ revisado pelo Revisor</summary><div></div>';
-        obs.querySelector('div').textContent = r.revisao.observacoes;
-        resp.appendChild(obs);
-      } else if (r.revisao?.erro) {
-        resp.appendChild(Object.assign(document.createElement('div'), { className: 'obs-revisor', textContent: `⚠️ sem revisão: ${r.revisao.erro}` }));
-      }
-      // código no GitHub: PR e estado do CI
-      if (r.repo) {
-        const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito ao mesclar' };
-        const linha = document.createElement('div');
-        linha.className = 'pr-github';
-        if (r.repo.url) {
-          const a = Object.assign(document.createElement('a'), { href: r.repo.url, target: '_blank', rel: 'noopener', textContent: `🔀 PR #${r.repo.pr}` });
-          linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
-          if (r.repo.preview) linha.append(' · ', Object.assign(document.createElement('a'), { href: r.repo.preview, target: '_blank', rel: 'noopener', textContent: '🔎 ver preview' }));
-        } else linha.textContent = `⚠️ GitHub: ${r.repo.erro}`;
-        resp.appendChild(linha);
-      }
-      if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
-      li.appendChild(resp);
-    });
     listaOrdens.appendChild(li);
   }
+}
+
+// "Ver" num aviso: abre o cartão da ordem (mesmo que a resposta seja de uma tarefa do plano)
+function verOrdem(id) {
+  const o = todasOrdens().find((x) => x.id === id);
+  if (!o) return ui.destacarOrdem(id);
+  const cartao = cartaoDe(o);
+  abertasNaMao.set(cartao.id, true);
+  if (cartao !== o) abertasNaMao.set(`t:${o.id}`, true);
+  if (!passaNoFiltro(cartao, filtroOrdens)) { filtroOrdens = 'todas'; }
+  marcarVista(cartao);
+  renderizarOrdens();
+  ui.destacarOrdem(cartao.id);
 }
 
 // Como o Crânio decidiu, em uma linha
@@ -562,6 +781,7 @@ function aoOrdem(ordem, { nova }) {
   // respostas novas aparecem no balão do agente por alguns segundos (e num aviso)
   ordem.respostas.slice(respostasAntes).forEach((r, i) => {
     if (!vista || r.simulada) return;
+    if (r.erro || /^(Erro:|Interrompida:)/.test(r.texto)) return; // erros vão só para o registro de erros
     const indice = respostasAntes + i;
     const erro = r.erro || /^Erro:/.test(r.texto);
     // a folha sai da mesa do agente, passa pelo Revisor (se revisou) e pousa na mesa do chefe
@@ -579,7 +799,7 @@ function aoOrdem(ordem, { nova }) {
       texto: r.texto.split('\n').find((l) => l.trim()) || '',
       cor: corDe(r.agente),
       acoes: [
-        { rotulo: 'Ver', principal: true, fn: () => ui.destacarOrdem(ordem.id) },
+        { rotulo: 'Ver', principal: true, fn: () => verOrdem(ordem.id) },
         ...(erro ? [] : [{ rotulo: '↩ Ajustar', fn: () => pedirAjusteDe(ordem, indice, r.agente) }]),
       ],
     });
@@ -653,7 +873,7 @@ const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoClientes: (lista) => gestao?.definirClientes(lista),
-  aoAviso: ({ texto }) => ui.avisar({ icone: '⚠️', titulo: 'Supervisor', texto, cor: 'var(--erro)', duracao: 15000 }),
+  aoAviso: (aviso) => registroErros?.adicionarAviso(aviso), // vai para o registro de erros (sem aviso na tela)
   aoDecisor({ ativo, online }) {
     cranio.grupo.visible = ativo;
     cranio.definirOnline(online);
@@ -706,9 +926,15 @@ integracao = criarIntegracao({
     conexao.textContent = `● ${texto}`;
     conexao.classList.toggle('online', online);
     // ao conectar no servidor, busca os clientes (para o seletor da barra de ordens)
-    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); }
+    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); registroErros?.recarregar(); }
   },
 });
+
+registroErros = criarRegistroErros({
+  ordens: todasOrdens, nomeDe, nomeCliente, aoVerOrdem: (id) => verOrdem(id),
+  servidorAtivo: () => integracao.servidorAtivo(), aoMudar: () => atualizarHoje(),
+});
+document.getElementById('abrir-erros').addEventListener('click', () => registroErros.abrir());
 
 janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
 criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, pedirAjuste: (...a) => integracao.pedirAjuste(...a) });
