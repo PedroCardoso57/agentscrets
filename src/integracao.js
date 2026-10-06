@@ -26,7 +26,7 @@ const TAREFAS_DEMO = {
   revisor: ['Revisando texto do blog', 'Conferindo peça do designer', 'Aprovando entrega'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {}, aoAviso = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -185,6 +185,7 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
       try { const dados = JSON.parse(e.data); pararDemo(); aoConexao('servidor conectado', true); processar(dados); } catch { /* ignora */ }
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('aviso', (e) => { try { aoAviso(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('clientes', (e) => { try { aoClientes(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('removido', (e) => { try { aoRemovido(JSON.parse(e.data).id); } catch { /* ignora */ } });
     fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });
@@ -207,5 +208,12 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     receberOrdem(await r.json());
   }
 
-  return { enviarOrdem, pedirAjuste, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
+  // O supervisor tenta de novo agora uma tarefa que falhou.
+  async function tentarDeNovo(ordemId, agente) {
+    const r = await fetch(`api/ordens/${encodeURIComponent(ordemId)}/tentar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agente }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
+    receberOrdem(await r.json());
+  }
+
+  return { enviarOrdem, pedirAjuste, tentarDeNovo, cumprirNaSimulacao, servidorAtivo: () => servidorAtivo };
 }

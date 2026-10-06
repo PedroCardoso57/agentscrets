@@ -80,6 +80,9 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   }
 
   function pedidoDe(ordem) {
+    if (ordem.consolidacao) {
+      return `${ordem.texto}\n\nA equipe terminou todas as tarefas do seu plano. Junte as entregas abaixo numa entrega final para o chefe: completa, organizada e pronta para usar. Mantenha o conteúdo de cada uma (não resuma demais), elimine repetições, aponte o que ainda falta decidir, e não invente nada que não esteja nas entregas.\n\nEntregas da equipe:\n<<<\n${ordem.anexo || ''}\n>>>`;
+    }
     if (ordem.ajuste) {
       // pedido de ajuste: o agente vê o pedido original e o que ele mesmo entregou
       return `O chefe pediu um ajuste numa entrega sua.\n\nPedido original:\n${ordem.ajuste.original}\n\nSua entrega anterior:\n<<<\n${ordem.ajuste.anterior}\n>>>\n\nAjuste pedido pelo chefe: ${ordem.texto}\n\nDevolva a versão completa já ajustada (não só a parte que mudou).`;
@@ -240,7 +243,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     const cfg = configuracao();
     const c = cfg[id];
     if (!c) return;
-    const podeDelegar = Boolean(c.delegar) && (!ordem.de || ordem.de === 'chefe') && !ordem.ajuste; // delegadas e ajustes não são re-delegados
+    const podeDelegar = Boolean(c.delegar) && (!ordem.de || ordem.de === 'chefe') && !ordem.ajuste && !ordem.consolidacao; // delegadas, ajustes e entregas finais não são re-delegados
     registrarStatus({ id, status: 'trabalhando', tarefa: ordem.texto.slice(0, 140), motor: rotulo(c) });
     const inicio = Date.now();
     let usado = c; // muda se a IA reserva precisar entrar
@@ -260,7 +263,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
         if (plano) {
           const tarefas = (Array.isArray(plano.tarefas) ? plano.tarefas : [])
             .filter((t) => t && cfg[t.para] && t.para !== id && typeof t.texto === 'string' && t.texto.trim());
-          for (const t of tarefas) criarOrdem({ para: t.para, texto: t.texto, de: id, contexto: `pedido original do chefe: "${ordem.texto}"`, cliente: ordem.cliente, origem: ordem.origem });
+          for (const t of tarefas) criarOrdem({ para: t.para, texto: t.texto, de: id, contexto: `pedido original do chefe: "${ordem.texto}"`, cliente: ordem.cliente, origem: ordem.origem, pai: ordem.id });
           resposta = (plano.resposta || 'Plano montado.') + (tarefas.length ? `\n\nDistribuí: ${tarefas.map((t) => `${t.para} → ${t.texto}`).join(' · ')}` : '');
         }
       } else if (resposta && revisorDisponivel(id, c, cfg)) {
@@ -322,7 +325,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
       if (ordem.estado === 'pendente') { despachar(ordem); continue; }
       // em andamento quando o servidor caiu: avisa em vez de repetir (e pagar de novo) sem você saber
       const interrompidos = ordem.entregue.filter((id) => cfg[id] && cfg[id].provedor !== 'webhook' && !ordem.respostas.some((r) => r.agente === id));
-      for (const id of interrompidos) registrarResposta(ordem, id, 'Interrompida: o servidor reiniciou durante a tarefa. Envie a ordem de novo.');
+      for (const id of interrompidos) registrarResposta(ordem, id, 'Interrompida: o servidor reiniciou durante a tarefa. O supervisor vai tentar de novo.');
       if (interrompidos.length) atualizarOrdem(ordem);
     }
     if (existsSync(arquivoEditado)) console.log(`Usando a equipe editada pela tela (${arquivoEditado}). Para voltar ao motores.json, use "Voltar ao arquivo do servidor" na tela Equipe.`);

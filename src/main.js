@@ -329,9 +329,10 @@ function nomeDe(id) {
   return id === 'todos' ? 'todos' : estacoes.get(id)?.agente.nome || id;
 }
 
-const ROTULO_ORDEM = { pendente: 'aguardando motor', entregue: 'entregue ao motor', respondida: 'respondida' };
+const ROTULO_ORDEM = { pendente: 'aguardando motor', entregue: 'entregue ao motor', respondida: 'respondida', falhou: 'com erro' };
 
 const expandidas = new Set(); // respostas abertas com "ver mais"
+const todasOrdens = () => [...ordensVistas.values()].map((v) => v.ordem);
 const corDe = (id) => estacoes.get(id)?.agente.cor || 'var(--marca)';
 function horaCurta(iso) {
   const d = new Date(iso);
@@ -373,10 +374,40 @@ function renderizarOrdens() {
     const marcas = [
       o.cliente ? `👤 ${nomeCliente(o.cliente)}` : null,
       o.ajuste ? '↩ ajuste' : null,
+      o.consolidacao ? '🏁 entrega final' : null,
+      o.texto.startsWith('Replanejar:') ? '🔀 replanejamento' : null,
       o.origem?.rotina ? '🗓 rotina' : null,
       o.origem?.telegram ? '✈ Telegram' : null,
     ].filter(Boolean);
     if (marcas.length) li.querySelector('.cab').after(Object.assign(document.createElement('div'), { className: 'marcas', textContent: marcas.join(' · ') }));
+    // plano do Orquestrador: quantas tarefas já estão prontas
+    const filhos = todasOrdens().filter((f) => f.pai === o.id);
+    if (filhos.length) {
+      const prontas = filhos.filter((f) => f.desistida || f.estado === 'respondida').length;
+      const plano = document.createElement('div');
+      plano.className = 'plano';
+      plano.textContent = prontas === filhos.length ? `📋 plano: ${filhos.length}/${filhos.length} prontas${o.consolidada ? ' · entrega final pedida' : ''}` : `📋 plano: ${prontas}/${filhos.length} prontas · o Orquestrador está acompanhando`;
+      li.appendChild(plano);
+    }
+    // supervisor: tentativas, próxima vez e "tentar agora"
+    for (const [agente, t] of Object.entries(o.tentativas || {})) {
+      if (o.estado !== 'falhou' && !o.desistida) continue;
+      const linha = document.createElement('div');
+      linha.className = 'supervisor';
+      const quando = t.proxima ? new Date(t.proxima).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+      linha.textContent = o.desistida
+        ? `🔀 ${nomeDe(agente)} não conseguiu: ${o.motivoDesistencia || 'erro'}`
+        : `🔁 ${nomeDe(agente)}: ${t.n ? `${t.n}ª tentativa falhou` : 'falhou'}${quando ? ` · tenta de novo às ${quando}` : ''}${t.ultimoErro ? ` · ${t.ultimoErro.slice(0, 90)}` : ''}`;
+      if (!o.local) {
+        const botao = Object.assign(document.createElement('button'), { type: 'button', textContent: '↻ Tentar agora' });
+        botao.onclick = async () => {
+          botao.disabled = true;
+          try { await integracao.tentarDeNovo(o.id, agente); } catch (erro) { avisar(`Não consegui tentar de novo: ${erro.message}`, true); botao.disabled = false; }
+        };
+        linha.appendChild(botao);
+      }
+      li.appendChild(linha);
+    }
     if (o.decisao) {
       // quem decidiu o agente (o Laya), com que certeza e a urgência
       const d = document.createElement('div');
@@ -584,6 +615,7 @@ const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoClientes: (lista) => gestao?.definirClientes(lista),
+  aoAviso: ({ texto }) => ui.avisar({ icone: '⚠️', titulo: 'Supervisor', texto, cor: 'var(--erro)', duracao: 15000 }),
   aoDecisor({ ativo, online }) {
     cranio.grupo.visible = ativo;
     cranio.definirOnline(online);

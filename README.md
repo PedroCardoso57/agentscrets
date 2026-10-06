@@ -222,6 +222,19 @@ Ordens que saem sozinhas: nos dias da semana escolhidos ou uma vez por mês, no 
 
 **☀ Resumo de ontem:** na janela 🗓 Rotinas, o botão **"Criar Resumo de ontem todo dia às 8h"** cria uma rotina que junta tudo o que a equipe fez no dia anterior: cada entrega com agente, cliente, trecho, ajustes, revisão e a sua avaliação, mais os erros e as ordens sem resposta. Esse material vai para o Redator, que escreve o resumo com visão geral, entregas por cliente, destaques, o que deu errado e as pendências do dia. Ele chega como qualquer entrega: no painel, no 📦 e no Telegram. Qualquer rotina pode fazer isso: basta marcar "Juntar tudo o que a equipe fez ontem".
 
+### 🔁 Supervisor: nenhuma tarefa fica pela metade
+- **Tentativas automáticas:** se uma tarefa dá erro (limite da IA, chave errada, provedor fora do ar) ou é interrompida porque o servidor reiniciou, ela é tentada de novo sozinha. As esperas crescem: 1, 3, 10, 30 e 60 minutos. O cartão fica **com erro** e mostra a próxima tentativa, com o botão **↻ Tentar agora**.
+- **Agente consertado:** salvou o agente em ⚙ Equipe? Tudo o que estava parado com ele volta na hora.
+- **Sem jeito:** depois de 5 tentativas, ou se o agente saiu da equipe:
+  - se a tarefa foi passada pelo Orquestrador, ele recebe o pedido de **replanejar** e passa a tarefa para outro agente;
+  - se a ordem era sua e direta, você recebe um aviso na tela e no Telegram.
+- **O Orquestrador acompanha o plano até o fim:**
+  - fica "Acompanhando N plano(s)";
+  - o cartão mostra "📋 plano: 2/3 prontas";
+  - quando todas as tarefas ficam prontas, ele junta tudo numa **🏁 entrega final** para você.
+  - Para desligar a entrega final: `ORQUESTRADOR_CONSOLIDAR=0` no `.env`.
+- Erros antigos do histórico (mais de 12 horas) não são refeitos, para não gastar cota à toa.
+
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
 1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;

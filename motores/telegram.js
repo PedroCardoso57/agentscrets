@@ -240,5 +240,10 @@ export function criarTelegram({ dadosDir, nomeDe = (id) => id, equipe = () => []
     });
   }
 
-  return { iniciar, enviarEntrega, ativo, conectado: () => Boolean(chatId) };
+  // Aviso solto para o chefe (ex.: uma tarefa que não deu certo).
+  function avisar(texto) {
+    if (ativo() && chatId) responder(chatId, texto);
+  }
+
+  return { iniciar, enviarEntrega, avisar, ativo, conectado: () => Boolean(chatId) };
 }
