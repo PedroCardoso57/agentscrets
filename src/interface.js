@@ -90,12 +90,18 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
 
   // ---------- avisos ----------
   const caixaAvisos = document.getElementById('avisos');
-  function avisar({ icone = '📦', titulo, texto = '', cor, acoes = [], duracao = 9000 }) {
+  function avisar({ icone = '📦', foto, titulo, texto = '', cor, acoes = [], duracao = 9000 }) {
     const t = document.createElement('div');
     t.className = 'toast';
     if (cor) t.style.setProperty('--cor', cor);
     t.innerHTML = '<span class="icone"></span><b></b><p></p>';
-    t.querySelector('.icone').textContent = icone;
+    if (foto) {
+      // fotinha do agente, com o ícone do aviso no cantinho
+      const el = t.querySelector('.icone');
+      el.classList.add('com-foto');
+      el.style.backgroundImage = `url(${foto})`;
+      el.appendChild(Object.assign(document.createElement('i'), { textContent: icone }));
+    } else t.querySelector('.icone').textContent = icone;
     t.querySelector('b').textContent = titulo;
     t.querySelector('p').textContent = texto;
     const fechar = () => { t.classList.add('saindo'); setTimeout(() => t.remove(), 300); };

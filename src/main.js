@@ -15,6 +15,7 @@ import { criarInterface } from './interface.js';
 import { Efeitos } from './efeitos.js';
 import { Vida } from './vida.js';
 import { criarRegistroErros } from './erros.js';
+import { retratosDa } from './retratos.js';
 
 // ---------- renderização ----------
 
@@ -159,7 +160,9 @@ function montar() {
     estacoes.set(agente.id, { agente, grupo, estacao, boneco, etiqueta, ...anterior });
   });
 
+  fotos = retratosDa(agentes); // fotinhas 3x4 de cada um (antes do painel, que já usa)
   montarPainel();
+  renderizarOrdens();
   for (const id of estacoes.keys()) mostrarStatus(id);
   atualizarHorario();
 }
@@ -191,8 +194,10 @@ function montarPainel() {
     const li = document.createElement('li');
     li.innerHTML = '<span class="avatar"><i class="bolinha"></i></span><span class="nome"><span></span> <small></small></span><span class="tarefa"></span>';
     li.querySelector('.nome span').textContent = e.agente.nome;
-    li.querySelector('.avatar').prepend(iniciais(e.agente.nome));
-    li.querySelector('.avatar').style.background = e.agente.cor;
+    const avatarEquipe = li.querySelector('.avatar');
+    const bolinha = avatarEquipe.querySelector('.bolinha');
+    pintarAvatar(avatarEquipe, id);
+    avatarEquipe.appendChild(bolinha); // pintarAvatar limpa o texto; a bolinha de status volta
     li.style.setProperty('--cor', e.agente.cor);
     e.item = li;
     atualizarSubtitulo(e);
@@ -369,6 +374,20 @@ const expandidas = new Set(); // respostas abertas com "ver mais"
 const todasOrdens = () => [...ordensVistas.values()].map((v) => v.ordem);
 const corDe = (id) => estacoes.get(id)?.agente.cor || 'var(--marca)';
 // "Tech Lead" → TL, "Back-end" → BE, "DevOps" → DO, "Requisitos" → RE
+// Fotinha do agente (retrato do bonequinho); sem foto, as iniciais na cor dele
+let fotos = new Map();
+function pintarAvatar(el, id) {
+  const foto = fotos.get(id);
+  el.style.background = corDe(id);
+  if (foto) {
+    el.textContent = '';
+    el.style.backgroundImage = `url(${foto})`;
+    el.classList.add('foto');
+  } else {
+    el.textContent = iniciais(nomeDe(id));
+  }
+  el.title = nomeDe(id);
+}
 function iniciais(nome) {
   const partes = String(nome).split(/[\s\-/]+/).filter(Boolean);
   if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
@@ -592,8 +611,7 @@ function blocoTarefa(f, rotulo) {
   d.addEventListener('toggle', () => abertasNaMao.set(`t:${f.id}`, d.open));
   const s = document.createElement('summary');
   s.innerHTML = '<span class="estado"></span><span class="avatar mini"></span><b></b><span class="txt"></span>';
-  s.querySelector('.avatar').textContent = iniciais(nomeDe(f.para));
-  s.querySelector('.avatar').style.background = corDe(f.para);
+  pintarAvatar(s.querySelector('.avatar'), f.para);
   s.querySelector('.estado').textContent = SITUACAO[situacaoDe(f)].rotulo.split(' ')[0];
   s.querySelector('.estado').title = SITUACAO[situacaoDe(f)].rotulo;
   s.querySelector('b').textContent = rotulo || nomeDe(f.para);
@@ -662,9 +680,7 @@ function renderizarOrdens() {
     const aberto = abertasNaMao.get(o.id) ?? (nova || situacao !== 'concluida');
     li.classList.toggle('recolhido', !aberto);
     li.innerHTML = '<div class="cab"><span class="avatar"></span><div class="quem-cab"><b></b><small></small></div><span class="chip"></span></div><div class="texto"></div>';
-    const avatar = li.querySelector('.avatar');
-    avatar.textContent = iniciais(nomeDe(o.para));
-    avatar.style.background = corDe(o.para);
+    pintarAvatar(li.querySelector('.avatar'), o.para);
     li.querySelector('.cab b').textContent = o.para === 'todos' ? 'Toda a equipe' : nomeDe(o.para);
     li.querySelector('.cab small').textContent = [o.de && o.de !== 'chefe' ? `de ${nomeDe(o.de)}` : 'sua ordem', horaCurta(o.criadaEm), o.cliente ? nomeCliente(o.cliente) : null].filter(Boolean).join(' · ');
     const chip = li.querySelector('.chip');
@@ -840,6 +856,7 @@ function aoOrdem(ordem, { nova }) {
       efeitos.entrega(pontos);
     }
     ui.avisar({
+      foto: fotos.get(r.agente),
       icone: erro ? '⚠️' : r.revisao && !r.revisao.erro ? '✅' : '📦',
       titulo: erro ? `${nomeDe(r.agente)} teve um erro` : `${nomeDe(r.agente)} entregou${ordem.cliente ? ` · ${nomeCliente(ordem.cliente)}` : ''}`,
       texto: r.texto.split('\n').find((l) => l.trim()) || '',
@@ -957,7 +974,7 @@ integracao = criarIntegracao({
       funcao: dados.funcao || '',
       atividade: dados.atividade || 'digitar',
       cor: dados.cor || cores[agentes.length % cores.length],
-      cabelo: dados.cabelo, pele: dados.pele,
+      cabelo: dados.cabelo, pele: dados.pele, estilo: dados.estilo, barba: dados.barba, feminina: Boolean(dados.feminina),
       id: dados.id,
     });
     montar();

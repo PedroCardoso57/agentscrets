@@ -613,3 +613,8 @@ body.modo-lista #comando { right: 16px; }
 #lista-ordens .arquivos-resp .arquivo { font-size: 10.5px; font-weight: 600; padding: 2px 7px 2px 6px; border-radius: 6px; background: #ffffff10; border: 1px solid var(--borda); color: #d4d4d8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 #lista-ordens .arquivos-resp .arquivo::before { content: '▤ '; color: var(--suave); }
 #lista-ordens .arquivos-resp .ver-mais { margin-left: 2px; }
+
+/* fotinhas da equipe */
+.avatar.foto { background-size: cover !important; background-position: center 30% !important; color: transparent; text-shadow: none; }
+.toast .icone.com-foto { position: relative; width: 40px; height: 40px; border-radius: 11px; background-size: cover; background-position: center 30%; box-shadow: inset 0 0 0 1px #ffffff26; font-size: 0; }
+.toast .icone.com-foto i { position: absolute; right: -6px; bottom: -6px; font-size: 14px; font-style: normal; line-height: 1; filter: drop-shadow(0 1px 2px #000a); }
