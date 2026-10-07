@@ -44,6 +44,7 @@ import { criarAutopiloto } from './motores/autopiloto.js';
 import { criarRepositorios } from './motores/repositorios.js';
 import { criarSaude } from './motores/saude.js';
 import { criarTesteIas } from './motores/teste-ias.js';
+import { gravarArquivo } from './motores/gravar.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -139,16 +140,39 @@ function transmitir(evento, dados) {
   transmitirSemSalvar(evento, dados);
 }
 
-// Registro de erros: avisos do supervisor, do GitHub etc. (os erros dos agentes ficam nas próprias ordens)
+// Central de notificações: avisos do supervisor, do GitHub (por PR), do monitor de IAs etc.
+// (os erros dos agentes ficam nas próprias ordens). Cada notificação tem:
+//   categoria: github | ia | agentes | piloto     nivel: problema | info | ok
+//   pr: { cliente, numero, url } (as do mesmo PR aparecem juntas)   estado: em que pé o PR ficou
+//   importante: vai para o Telegram mesmo no modo "só o importante"
+//   silencioso: nunca vai para o Telegram (coisas do CI: não mudam nada no projeto)
 const avisos = [];
+const MAX_AVISOS = 800;
 const ARQUIVO_AVISOS = join(DADOS_DIR, 'avisos.json');
-readFile(ARQUIVO_AVISOS, 'utf8').then((t) => avisos.push(...JSON.parse(t).slice(-300))).catch(() => {});
-function registrarAviso(texto) {
-  const aviso = { em: new Date().toISOString(), texto: String(texto).slice(0, 2000) };
+readFile(ARQUIVO_AVISOS, 'utf8').then((t) => avisos.unshift(...JSON.parse(t).slice(-MAX_AVISOS))).catch(() => {});
+// O que vai para o Telegram: todas | importantes (problemas, PR mesclado, site no ar, IA que voltou) | problemas
+const TELEGRAM_MODOS = ['todas', 'importantes', 'problemas'];
+const ARQUIVO_PREF_NOTIF = join(DADOS_DIR, 'notificacoes.json');
+const prefNotificacoes = { telegram: TELEGRAM_MODOS.includes(process.env.TELEGRAM_NOTIFICAR) ? process.env.TELEGRAM_NOTIFICAR : 'importantes' };
+readFile(ARQUIVO_PREF_NOTIF, 'utf8').then((t) => Object.assign(prefNotificacoes, JSON.parse(t))).catch(() => {});
+let gravandoAvisos = null;
+function gravarAvisos() {
+  clearTimeout(gravandoAvisos); // várias notificações seguidas viram uma gravação só
+  gravandoAvisos = setTimeout(() => mkdir(DADOS_DIR, { recursive: true }).then(() => gravarArquivo(ARQUIVO_AVISOS, JSON.stringify(avisos))).catch(() => {}), 500);
+}
+function notificar(texto, { categoria = 'agentes', nivel = 'problema', pr, ia, cliente, estado: estadoPR, importante = false, silencioso = false } = {}) {
+  const aviso = { id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, em: new Date().toISOString(), texto: String(texto).slice(0, 2000), categoria, nivel };
+  if (pr) Object.assign(aviso, { pr, cliente: pr.cliente });
+  if (cliente) aviso.cliente = cliente;
+  if (estadoPR) aviso.estado = estadoPR;
+  if (ia) aviso.ia = ia;
   avisos.push(aviso);
-  if (avisos.length > 300) avisos.splice(0, avisos.length - 300);
-  mkdir(DADOS_DIR, { recursive: true }).then(() => writeFile(ARQUIVO_AVISOS, JSON.stringify(avisos))).catch(() => {});
+  if (avisos.length > MAX_AVISOS) avisos.splice(0, avisos.length - MAX_AVISOS);
+  gravarAvisos();
   transmitirSemSalvar('aviso', aviso);
+  const modo = prefNotificacoes.telegram;
+  if (silencioso) return; // só fica no histórico (ex.: o CI falhou e o agente está corrigindo)
+  if (modo === 'todas' || nivel === 'problema' || (modo === 'importantes' && importante)) telegram.avisar(texto);
 }
 
 function transmitirSemSalvar(evento, dados) {
@@ -364,8 +388,8 @@ repositorios = criarRepositorios({
     if (!cfg[rev] || cfg[rev].provedor === 'webhook') return null;
     return criarOrdem({ para: rev, de: 'chefe', cliente, texto, anexo, origem: { revisaoPR: { numero, url, agente } } });
   },
-  avisar: (texto) => { registrarAviso(texto); telegram.avisar(texto); },
-  informar: (texto) => telegram.avisar(texto),
+  avisar: (texto, extra) => notificar(texto, { categoria: 'github', ...extra, nivel: 'problema' }),
+  informar: (texto, extra) => notificar(texto, { categoria: 'github', nivel: 'info', ...extra }),
 });
 
 // O que os agentes recebem sobre o repositório do projeto: endereço, estrutura e como entregar arquivos.
@@ -401,8 +425,7 @@ const supervisor = criarSupervisor({
     motores.despachar(ordem);
   },
   avisarChefe(texto) {
-    registrarAviso(texto);
-    telegram.avisar(texto);
+    notificar(texto, { categoria: 'agentes' });
     documentacao?.registrar(texto);
   },
   // IA do agente fora (sem crédito, chave recusada…) e sem reserva funcionando: espera o monitor avisar que voltou
@@ -418,9 +441,8 @@ const supervisor = criarSupervisor({
 const saude = criarSaude({
   equipe: () => motores.equipe(),
   avisar(texto, tipo) {
-    if (tipo === 'problema') registrarAviso(texto); // vai para o registro de erros
-    else transmitirSemSalvar('aviso-ok', { texto });
-    telegram.avisar(texto);
+    notificar(texto, { categoria: 'ia', nivel: tipo === 'problema' ? 'problema' : 'ok', importante: true, ia: texto.match(/A IA (.+?) (?:está|voltou)/)?.[1] });
+    if (tipo !== 'problema') transmitirSemSalvar('aviso-ok', { texto });
   },
   aoVoltar: (agentes) => { for (const id of agentes) supervisor.agenteMudou(id); }, // IA voltou: retoma o que estava parado
   mudou: () => transmitirSemSalvar('ias', saude.porAgente()),
@@ -436,7 +458,7 @@ const autopiloto = criarAutopiloto({
   docDe: (projeto) => documentacao.resumo(projeto).texto,
   entregasDe: (projeto) => entregas.listar({ cliente: projeto }).itens,
   planoAberto: (projeto) => supervisor.planoAberto(projeto),
-  avisar: (texto) => { registrarAviso(texto); telegram.avisar(texto); },
+  avisar: (texto) => notificar(texto, { categoria: 'piloto' }),
 });
 documentacao = criarDocumentacao({
   dadosDir: DADOS_DIR,
@@ -499,6 +521,15 @@ async function atender(req, res) {
   if (rota === '/api/estado') return enviarJSON(res, 200, [...estado.values()]);
   // marca do escritório (topo da página e placa na parede)
   if (rota === '/api/erros') return enviarJSON(res, 200, avisos.slice().reverse());
+  if (rota === '/api/notificacoes' && req.method === 'GET') return enviarJSON(res, 200, { itens: avisos.slice().reverse(), preferencias: prefNotificacoes });
+  if (rota === '/api/notificacoes/preferencias' && req.method === 'POST') {
+    const dados = await lerCorpo(req);
+    if (!TELEGRAM_MODOS.includes(dados.telegram)) return enviarJSON(res, 400, { erro: `telegram: use ${TELEGRAM_MODOS.join(', ')}` });
+    prefNotificacoes.telegram = dados.telegram;
+    await mkdir(DADOS_DIR, { recursive: true });
+    await gravarArquivo(ARQUIVO_PREF_NOTIF, JSON.stringify(prefNotificacoes));
+    return enviarJSON(res, 200, prefNotificacoes);
+  }
 
   if (rota === '/api/marca') {
     return enviarJSON(res, 200, {
