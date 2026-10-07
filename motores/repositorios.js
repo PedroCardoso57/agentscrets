@@ -28,6 +28,8 @@ const NETLIFY_API = process.env.NETLIFY_API || 'https://api.netlify.com/api/v1';
 const MAX_ARQUIVOS = 80;
 const MAX_TAMANHO = 400_000;
 const MAX_CORRECOES = 3;
+const REENVIO_MIN = [2, 5, 10, 30, 60]; // espera entre os reenvios de uma entrega que não subiu (depois, de hora em hora)
+const REENVIO_LIMITE_MS = 48 * 3600 * 1000;
 const SEM_CI_MIN = 6; // sem nenhum check depois disso: o repositório não tem CI rodando
 const PRODUCAO_MIN = 20; // depois do merge, procura o deploy de produção por até 20 min
 const MAX_DIFF = 40_000; // quanto do diff vai para a revisão
@@ -278,6 +280,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     if (!ativo() || !ordem.cliente || !r || r.erro || ordem.origem?.revisaoPR) return; // revisão de PR não vira PR
     const arquivos = extrairArquivos(r.texto);
     if (!arquivos.length) return;
+    const falhaAnterior = r.repo?.erro ? r.repo : null; // reenvio de uma entrega que não tinha subido
     try {
       const repo = await garantirRepo(ordem.cliente);
       const existente = prDaOrdem(ordem);
@@ -299,10 +302,39 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       await gravar();
       mudou(ordem);
       console.log(`[github] ${r.agente}: ${arquivos.length} arquivo(s) em ${pr.url}`);
+      if (falhaAnterior) informar?.(`🔁 A entrega de ${r.agente} que não tinha subido agora está no GitHub: ${pr.url}`);
     } catch (erro) {
       console.error(`[github] ${erro.message}`);
-      r.repo = { erro: erro.message.slice(0, 200) };
+      // fica na fila de reenvio: tenta de novo sozinho, com espera crescente, por até 2 dias
+      const tentativas = (falhaAnterior?.tentativas || 0) + 1;
+      const desde = falhaAnterior?.desde || new Date().toISOString();
+      const espera = REENVIO_MIN[Math.min(tentativas - 1, REENVIO_MIN.length - 1)] * 60000 * (Number(process.env.GITHUB_REENVIO_ESCALA) || 1);
+      const desistiu = Date.now() - Date.parse(desde) > REENVIO_LIMITE_MS;
+      r.repo = { erro: erro.message.slice(0, 200), tentativas, desde, proxima: desistiu ? null : new Date(Date.now() + espera).toISOString(), desistiu };
+      if (desistiu) avisar?.(`⚠️ A entrega de ${r.agente} ("${ordem.texto.slice(0, 80)}") não conseguiu subir ao GitHub em 2 dias de tentativas: ${erro.message.slice(0, 160)}. Peça um ↩ ajuste para tentar de novo.`);
       mudou(ordem);
+    }
+  }
+
+  // Reenvio: entregas que não subiram (ex.: token sem permissão) tentam de novo sozinhas.
+  // As que falharam antes de o servidor subir também entram (sem "proxima": tenta já).
+  let reenviando = false;
+  async function reenviarPendentes() {
+    if (reenviando || !ativo()) return;
+    reenviando = true;
+    try {
+      let feitos = 0;
+      for (const ordem of ordens) {
+        for (const [indice, r] of ordem.respostas.entries()) {
+          if (feitos >= 3) return; // poucos por vez
+          if (ordem.cancelada || !r.repo?.erro || r.repo.desistiu || (r.repo.proxima && Date.parse(r.repo.proxima) > Date.now())) continue;
+          feitos++;
+          console.log(`[github] reenviando a entrega de ${r.agente} (ordem ${ordem.id}, tentativa ${(r.repo.tentativas || 0) + 1})`);
+          await publicarEntrega(ordem, indice);
+        }
+      }
+    } finally {
+      reenviando = false;
     }
   }
 
@@ -449,6 +481,7 @@ ${diff}`,
 
   // Acompanha os PRs abertos pelo escritório: CI, revisão, preview e produção.
   async function conferir() {
+    await reenviarPendentes().catch((erro) => console.error(`[github] reenvio: ${erro.message}`));
     // repositórios criados antes do Netlify ser configurado também ganham o site
     for (const repo of Object.values(repos)) if (netlifyAtivo() && !repo.netlify) await garantirNetlify(repo);
     for (const pr of prs) {
@@ -459,6 +492,9 @@ ${diff}`,
           if (pr.mergeSha && pr.producaoOk === undefined) await procurarProducao(pr, repo);
           continue;
         }
+        // ordem cancelada pelo chefe: o escritório para de cuidar do PR (ele fica aberto no GitHub)
+        if (pr.estado === 'cancelado') continue;
+        if (['testando', 'revisando', 'corrigindo'].includes(pr.estado) && ordens.some((o) => (o.id === pr.ordemId || o.id === pr.ultimaOrdem) && o.cancelada)) { marcar(pr, 'cancelado'); await gravar(); continue; }
         if (pr.estado === 'revisando') { await procurarPreview(pr, repo); await veredito(pr, repo); continue; }
         if (pr.estado !== 'testando') continue;
         await procurarPreview(pr, repo);

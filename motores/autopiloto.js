@@ -72,7 +72,9 @@ export function criarAutopiloto({ dadosDir, ordens, equipe, clientes, criarOrdem
     const doc = docDe(projeto) || '(sem documentação ainda)';
     const ultimas = entregasDe(projeto).slice(0, 12)
       .map((e) => `- ${e.em.slice(0, 16).replace('T', ' ')} · ${e.agente}: ${e.pedido.slice(0, 160)} → ${String(e.trecho || e.resumo || '').slice(0, 300).replace(/\s+/g, ' ')}`).join('\n') || '(nenhuma entrega ainda)';
-    const problemas = ordens.filter((o) => o.cliente === projeto && (o.desistida || o.estado === 'falhou'))
+    const canceladas = ordens.filter((o) => o.cliente === projeto && o.cancelada && !o.pai).slice(-10)
+      .map((o) => `- "${o.texto.slice(0, 160)}"`).join('\n') || '(nenhuma)';
+    const problemas = ordens.filter((o) => o.cliente === projeto && !o.cancelada && (o.desistida || o.estado === 'falhou'))
       .slice(-8).map((o) => `- "${o.texto.slice(0, 120)}" (${o.motivoDesistencia || 'com erro'})`).join('\n') || '(nenhum)';
     return `VOCÊ ESTÁ NO PILOTO AUTOMÁTICO. O chefe não vai dar ordens: decida sozinho, sem pedir permissão, o próximo passo do projeto "${nome}" e já distribua as tarefas.
 
@@ -89,7 +91,10 @@ ${doc.slice(0, 20000)}
 ${ultimas}
 
 PROBLEMAS EM ABERTO:
-${problemas}`;
+${problemas}
+
+CANCELADO PELO CHEFE (não refaça nem retome isso, a não ser que ele peça de novo):
+${canceladas}`;
   }
 
   function conferir() {

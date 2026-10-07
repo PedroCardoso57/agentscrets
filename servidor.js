@@ -167,6 +167,7 @@ function registrarStatus(item) {
 const respostaFalhou = (r) => r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
 
 function atualizarOrdem(ordem) {
+  if (ordem.cancelada) { ordem.estado = 'cancelada'; transmitir('ordem', ordem); return; }
   // 'falhou': algum destinatário está com a última resposta em erro (o supervisor tenta de novo)
   const comErro = ordem.entregue.some((a) => {
     const dele = ordem.respostas.filter((r) => r.agente === a);
@@ -176,6 +177,37 @@ function atualizarOrdem(ordem) {
     : comErro ? 'falhou'
       : ordem.respostas.length ? 'respondida' : ordem.entregue.length ? 'entregue' : 'pendente';
   transmitir('ordem', ordem);
+}
+
+// Cancelar: o chefe não quer mais a tarefa. Para ela e tudo o que ela gerou (tarefas do
+// plano, entrega final, ajustes e revisões de PR): ninguém tenta de novo, nada sobe ao GitHub.
+// Quem já estava no meio da resposta termina, mas a resposta só fica guardada.
+function cancelarOrdem(id) {
+  const raiz = ordens.find((o) => o.id === id);
+  if (!raiz) throw new Error('ordem não encontrada');
+  const familia = new Set([raiz]);
+  for (let mudou = true; mudou;) {
+    mudou = false;
+    for (const o of ordens) {
+      if (familia.has(o)) continue;
+      const urls = new Set([...familia].flatMap((f) => f.respostas.map((r) => r.repo?.url).filter(Boolean)));
+      const ligada = [...familia].some((f) => o.pai === f.id || o.consolidacao === f.id || o.ajuste?.ordemId === f.id)
+        || (o.origem?.revisaoPR && urls.has(o.origem.revisaoPR.url));
+      if (ligada) { familia.add(o); mudou = true; }
+    }
+  }
+  const em = new Date().toISOString();
+  for (const o of familia) {
+    if (o.cancelada) continue;
+    Object.assign(o, { cancelada: em, desistida: true, motivoDesistencia: 'cancelada pelo chefe' });
+    for (const t of Object.values(o.tentativas || {})) t.proxima = null;
+    atualizarOrdem(o);
+  }
+  // agentes que estavam só na fila dessa ordem voltam a ficar livres na tela
+  for (const o of familia) for (const id of o.entregue) if (estado.get(id)?.status !== 'trabalhando' && estado.get(id)?.tarefa === o.texto.slice(0, 140)) registrarStatus({ id, status: 'ocioso', tarefa: '' });
+  documentacao?.registrar(`Ordem cancelada pelo chefe: "${raiz.texto.slice(0, 200)}"${familia.size > 1 ? ` (e ${familia.size - 1} tarefa(s) ligadas a ela)` : ''}`, raiz.cliente);
+  console.log(`[ordens] ${raiz.id} cancelada pelo chefe (${familia.size} ordem(ns))`);
+  return { cancelada: raiz, total: familia.size };
 }
 
 function marcarEntregue(ordem, agente) {
@@ -189,7 +221,7 @@ function registrarResposta(ordem, agente, texto, extra = {}) {
   // vira arquivo .md no arquivo de entregas
   entregas.registrar(ordem, ordem.respostas.length - 1).catch((erro) => console.error('[entregas]', erro.message));
   // código entregue num projeto com repositório vira commit + pull request
-  repositorios?.publicarEntrega(ordem, ordem.respostas.length - 1);
+  if (!ordem.cancelada) repositorios?.publicarEntrega(ordem, ordem.respostas.length - 1);
   // vira evento da documentação viva (o trecho basta para o documentador resumir)
   documentacao?.registrar(`Ordem "${ordem.texto.slice(0, 200)}" (${ordem.de && ordem.de !== 'chefe' ? `delegada por ${ordem.de}` : 'do chefe'} para ${ordem.para}) — ${agente} respondeu${extra.erro ? ' com ERRO' : ''}${extra.motor ? ` usando ${extra.motor}` : ''}: ${String(texto).slice(0, 1500)}`, ordem.cliente);
 }
@@ -494,6 +526,11 @@ async function atender(req, res) {
     let dados;
     try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
     try { supervisor.tentarAgora(ordem, dados.agente || ordem.para); return enviarJSON(res, 200, ordem); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
+  }
+
+  const cancelar = rota.match(/^\/api\/ordens\/([\w-]+)\/cancelar$/);
+  if (cancelar && req.method === 'POST') {
+    try { return enviarJSON(res, 200, cancelarOrdem(cancelar[1])); } catch (erro) { return enviarJSON(res, 404, { erro: erro.message }); }
   }
 
   const ajuste = rota.match(/^\/api\/ordens\/([\w-]+)\/ajuste$/);
