@@ -286,6 +286,16 @@ Na janela **🗓 Rotinas** ficam o liga/desliga, o intervalo (padrão: 60 min), 
   - Para desligar a entrega final: `ORQUESTRADOR_CONSOLIDAR=0` no `.env`.
 - Erros antigos do histórico (mais de 12 horas) não são refeitos, para não gastar cota à toa.
 
+### 🩺 Monitor de IAs: quais estão funcionando
+
+O servidor confere sozinho, a cada 15 minutos (`SAUDE_INTERVALO_MIN`), cada IA que a equipe usa: se a chave existe, se o provedor aceita a chave e se o modelo escolhido existe. Essa conferência só lista os modelos, então não gasta tokens. Ele também aprende com o uso: se uma tarefa falha por falta de crédito, limite de uso ou chave recusada, a IA é marcada na hora; quando ela volta a responder, a marca sai.
+
+- **Onde ver:** no topo da aba **Equipe** ("IAs: todas funcionando" ou quais estão com problema, com o botão **verificar agora**) e um selo vermelho no agente afetado.
+- **Avisos:** quando uma IA cai, o aviso vai para o registro de erros e para o Telegram; quando volta, aparece um aviso verde e o Telegram avisa também.
+- **Desvio automático:** se a IA de um agente está sem crédito, sem chave, com chave recusada ou com um modelo que não existe, ele usa direto a IA reserva (sem perder tempo tentando).
+- **Nada se perde:** enquanto a IA (e a reserva) estiver fora, o supervisor espera em vez de gastar as tentativas; quando ela volta, as tarefas paradas são retomadas na hora.
+- Uma IA marcada com limite ou sem crédito recebe, de tempos em tempos, um "ok" bem curto (poucos tokens) para saber se já voltou. `SAUDE_IAS=0` desliga o monitor.
+
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":
 1. se o limite é por minuto, o agente espera o tempo que a API pede (até 45 s) e tenta de novo;
