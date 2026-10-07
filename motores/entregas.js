@@ -2,6 +2,7 @@
 // DADOS_DIR/entregas/AAAA-MM-DD/, e um índice permite buscar e filtrar tudo,
 // inclusive o que já saiu do histórico de ordens (que guarda só as últimas 2000).
 
+import { gravarArquivo } from './gravar.js';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 
@@ -41,8 +42,7 @@ export function criarEntregas({ dadosDir, nomeIA = (r) => r.motor || 'externo', 
 
   async function salvarIndice() {
     await mkdir(pasta, { recursive: true });
-    await writeFile(`${arquivoIndice}.tmp`, JSON.stringify(indice));
-    await rename(`${arquivoIndice}.tmp`, arquivoIndice);
+    await gravarArquivo(arquivoIndice, JSON.stringify(indice));
   }
 
   function markdown(ordem, r) {

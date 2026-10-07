@@ -20,6 +20,7 @@
 // GITHUB_DONO (organização onde criar; padrão: a conta do token), GITHUB_PREFIXO
 // (prefixo do nome dos repositórios).
 
+import { gravarArquivo } from './gravar.js';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -28,6 +29,7 @@ const NETLIFY_API = process.env.NETLIFY_API || 'https://api.netlify.com/api/v1';
 const MAX_ARQUIVOS = 80;
 const MAX_TAMANHO = 400_000;
 const MAX_CORRECOES = 3;
+const MAX_CONFLITOS = 3; // vezes que o escritório tenta resolver o conflito de um PR antes de chamar você
 const REENVIO_MIN = [2, 5, 10, 30, 60]; // espera entre os reenvios de uma entrega que não subiu (depois, de hora em hora)
 const REENVIO_LIMITE_MS = 48 * 3600 * 1000;
 const SEM_CI_MIN = 6; // sem nenhum check depois disso: o repositório não tem CI rodando
@@ -190,10 +192,11 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     try { ({ repos = {}, prs = [] } = JSON.parse(await readFile(arquivo, 'utf8'))); } catch { /* primeira vez */ }
   }
 
-  async function gravar() {
-    await mkdir(dadosDir, { recursive: true });
-    await writeFile(`${arquivo}.tmp`, JSON.stringify({ repos, prs: prs.slice(-500) }, null, 2));
-    await rename(`${arquivo}.tmp`, arquivo);
+  // uma gravação por vez (duas entregas ao mesmo tempo não podem disputar o mesmo arquivo)
+  let fila = Promise.resolve();
+  function gravar() {
+    fila = gravarArquivo(arquivo, JSON.stringify({ repos, prs: prs.slice(-500) }, null, 2));
+    return fila;
   }
 
   async function dono() {
@@ -220,8 +223,46 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     return commit.sha;
   }
 
+  // Lê um arquivo de um branch/commit (null se não existe)
+  async function lerArquivo(repo, caminho, ref) {
+    try {
+      const d = await gh('GET', `/repos/${repo.dono}/${repo.nome}/contents/${caminho.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);
+      return Buffer.from(d.content || '', d.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+    } catch (erro) {
+      if (erro.status === 404) return null;
+      throw erro;
+    }
+  }
+
+  // Refaz o PR em cima do main atual: os arquivos do PR (versão do branch) mais os que o
+  // agente entregou já juntando as mudanças. O branch é do escritório, então pode ser regravado.
+  async function reconstruirSobreMain(repo, pr, arquivos, mensagem) {
+    const base = `/repos/${repo.dono}/${repo.nome}`;
+    const mainSha = (await gh('GET', `${base}/git/ref/heads/${encodeURIComponent(repo.padrao)}`)).object.sha;
+    const arvoreMain = (await gh('GET', `${base}/git/commits/${mainSha}`)).tree.sha;
+    const entregues = new Map(arquivos.map((a) => [a.caminho, a.conteudo]));
+    const doPR = (await gh('GET', `${base}/pulls/${pr.numero}/files?per_page=100`)).filter((f) => f.status !== 'removed');
+    const arvore = [];
+    for (const f of doPR) {
+      if (entregues.has(f.filename)) continue;
+      const conteudo = await lerArquivo(repo, f.filename, pr.branch);
+      if (conteudo !== null) arvore.push({ path: f.filename, mode: '100644', type: 'blob', content: conteudo });
+    }
+    for (const [caminho, conteudo] of entregues) arvore.push({ path: caminho, mode: '100644', type: 'blob', content: conteudo });
+    const t = await gh('POST', `${base}/git/trees`, { base_tree: arvoreMain, tree: arvore });
+    const commit = await gh('POST', `${base}/git/commits`, { message: mensagem, tree: t.sha, parents: [mainSha] });
+    await gh('PATCH', `${base}/git/refs/heads/${encodeURIComponent(pr.branch)}`, { sha: commit.sha, force: true });
+    return commit.sha;
+  }
+
   // Garante o repositório do projeto (cria privado, com README e CI, na primeira vez).
-  async function garantirRepo(cliente) {
+  const criando = new Map(); // cliente → promessa: duas entregas ao mesmo tempo não criam o repositório duas vezes
+  function garantirRepo(cliente) {
+    if (repos[cliente]) return Promise.resolve(repos[cliente]);
+    if (!criando.has(cliente)) criando.set(cliente, criarRepo(cliente).finally(() => criando.delete(cliente)));
+    return criando.get(cliente);
+  }
+  async function criarRepo(cliente) {
     if (repos[cliente]) return repos[cliente];
     const ficha = clientes.listar().find((c) => c.id === cliente);
     const nome = nomeRepo(cliente);
@@ -263,6 +304,25 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     } catch { return ''; }
   }
 
+  // Conteúdo atual dos arquivos que todo mundo mexe (package.json & cia.) e dos citados no pedido:
+  // quem reescreve um arquivo inteiro precisa partir da versão atual para não apagar o trabalho dos outros.
+  const CHAVE_ARQUIVO = /(^|\/)(package\.json|requirements\.txt|pyproject\.toml|tsconfig\.json|vite\.config\.\w+|netlify\.toml|docker-compose\.ya?ml|Dockerfile|\.env\.example|schema\.prisma)$/;
+  async function arquivosAtuais(cliente, pedido = '') {
+    const repo = repos[cliente];
+    const lista = (await arvore(cliente)).split('\n').filter((p) => p && !p.startsWith('('));
+    const citados = lista.filter((p) => pedido.includes(p) || (p.includes('/') && pedido.includes(p.split('/').pop()) && p.split('/').pop().length > 6));
+    const escolhidos = [...new Set([...lista.filter((p) => CHAVE_ARQUIVO.test(p) && p.split('/').length <= 3), ...citados])].slice(0, 12);
+    const partes = [];
+    let total = 0;
+    for (const caminho of escolhidos) {
+      const conteudo = await lerArquivo(repo, caminho, repo.padrao).catch(() => null);
+      if (conteudo == null || conteudo.length > 12000 || total + conteudo.length > 40000) continue;
+      total += conteudo.length;
+      partes.push(`### ${caminho}\n\`\`\`\n${conteudo}\n\`\`\``);
+    }
+    return partes.join('\n\n');
+  }
+
   // O PR de uma entrega anterior (para ajustes e correções irem no mesmo branch).
   function prDaOrdem(ordem) {
     for (let o = ordem; o?.ajuste;) {
@@ -287,12 +347,27 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       const branch = existente?.branch || `agentes/${r.agente}-${ordem.id}`;
       const titulo = (ordem.ajuste?.original || ordem.texto).split('\n')[0].slice(0, 90);
       const mensagem = `${existente ? 'Ajuste' : r.agente}: ${(existente ? ordem.texto : titulo).slice(0, 72)}\n\nEntrega da ordem ${ordem.id} (${r.agente}, ${r.motor || 'IA'}).`;
-      const sha = await commitar(repo, branch, repo.padrao, arquivos, mensagem);
+      // resolvendo conflito: refaz o PR em cima do main atual (sem conflito); senão, commit normal no branch
+      const sha = existente?.reconstruir
+        ? await reconstruirSobreMain(repo, existente, arquivos, `Resolve o conflito com o ${repo.padrao}: ${(existente.reconstruir.conflitantes || []).join(', ')}`.slice(0, 200))
+        : await commitar(repo, branch, repo.padrao, arquivos, mensagem);
+      if (existente?.reconstruir) {
+        existente.reconstruir = null;
+        informar?.(`🔀 Conflito do PR #${existente.numero} resolvido por ${r.agente}: ${existente.url}`);
+      }
       cacheArvore.delete(ordem.cliente);
       let pr = existente;
       if (!pr) {
         const corpo = `Entrega do agente **${r.agente}** para: ${ordem.ajuste?.original || ordem.texto}\n\nArquivos:\n${arquivos.map((a) => `- \`${a.caminho}\``).join('\n')}\n\n${repo.ci ? 'O CI roda os testes; se falharem, o agente corrige neste mesmo PR.' : ''}\n\n_Aberto pelo escritório de agentes._`;
-        const novo = await gh('POST', `/repos/${repo.dono}/${repo.nome}/pulls`, { title: titulo, head: branch, base: repo.padrao, body: corpo });
+        let novo;
+        try {
+          novo = await gh('POST', `/repos/${repo.dono}/${repo.nome}/pulls`, { title: titulo, head: branch, base: repo.padrao, body: corpo });
+        } catch (erro) {
+          // reenvio de uma entrega cujo PR já tinha sido aberto: usa o PR que já existe
+          if (erro.status !== 422) throw erro;
+          [novo] = await gh('GET', `/repos/${repo.dono}/${repo.nome}/pulls?state=open&head=${encodeURIComponent(`${repo.dono}:${branch}`)}`);
+          if (!novo) throw erro;
+        }
         pr = { cliente: ordem.cliente, numero: novo.number, url: novo.html_url, branch, agente: r.agente, ordemId: ordem.id, indice, correcoes: 0 };
         prs.push(pr);
         informar?.(`🔀 ${r.agente} abriu o PR #${pr.numero} (${arquivos.length} arquivo(s)): ${pr.url}`);
@@ -362,9 +437,68 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       informar?.(`✅ PR #${pr.numero} mesclado${pr.correcoes ? ` depois de ${pr.correcoes} correção(ões)` : ''}: ${pr.url}`);
       console.log(`[github] PR mesclado: ${pr.url}`);
     } catch (erro) {
+      // 405/409: o PR não pode ser mesclado (conflito com o main): o escritório resolve
+      if ([405, 409].includes(erro.status)) return resolverConflito(pr, repo);
       marcar(pr, 'conflito');
       avisar?.(`⚠️ Não consegui mesclar o ${pr.url} (${erro.message.slice(0, 120)}). Veja no GitHub.`);
     }
+  }
+
+  // O PR está em conflito com o main? (null = o GitHub ainda está calculando)
+  async function emConflito(pr, repo) {
+    const d = await gh('GET', `/repos/${repo.dono}/${repo.nome}/pulls/${pr.numero}`);
+    if (d.merged) { marcar(pr, 'mesclado'); return false; } // alguém mesclou à mão
+    if (d.state === 'closed') { marcar(pr, 'fechado'); return false; } // alguém fechou à mão
+    return d.mergeable === false;
+  }
+
+  // Conflito: primeiro tenta o "atualizar branch" do GitHub (resolve quando os arquivos não se
+  // cruzam); se os dois lados mexeram nos mesmos arquivos, o autor do PR recebe as duas versões
+  // e entrega a final, e o PR é refeito em cima do main. Passa de novo pelo CI e pela revisão.
+  async function resolverConflito(pr, repo) {
+    const base = `/repos/${repo.dono}/${repo.nome}`;
+    try {
+      await gh('PUT', `${base}/pulls/${pr.numero}/update-branch`, {});
+      pr.sha = (await gh('GET', `${base}/git/ref/heads/${encodeURIComponent(pr.branch)}`)).object.sha;
+      marcar(pr, 'testando', { desde: new Date().toISOString() });
+      console.log(`[github] PR #${pr.numero}: branch atualizado com o ${repo.padrao} (sem conflito de arquivo)`);
+      await gravar();
+      return;
+    } catch (erro) {
+      if (![409, 422].includes(erro.status)) throw erro;
+    }
+    pr.conflitos = (pr.conflitos || 0) + 1;
+    if (pr.conflitos > MAX_CONFLITOS) {
+      marcar(pr, 'conflito');
+      avisar?.(`⚠️ O ${pr.url} continua em conflito com o ${repo.padrao} depois de ${MAX_CONFLITOS} tentativas de juntar as mudanças. Precisa de um olhar humano.`);
+      await gravar();
+      return;
+    }
+    // quais arquivos os dois lados mudaram
+    const cmp = await gh('GET', `${base}/compare/${encodeURIComponent(repo.padrao)}...${encodeURIComponent(pr.branch)}`);
+    const noMain = await gh('GET', `${base}/compare/${cmp.merge_base_commit.sha}...${encodeURIComponent(repo.padrao)}`);
+    const mudouNoMain = new Set((noMain.files || []).map((f) => f.filename));
+    const doPR = await gh('GET', `${base}/pulls/${pr.numero}/files?per_page=100`);
+    const conflitantes = doPR.filter((f) => mudouNoMain.has(f.filename)).map((f) => f.filename).slice(0, 8);
+    const blocos = [];
+    for (const caminho of conflitantes) {
+      const doMain = await lerArquivo(repo, caminho, repo.padrao);
+      const seu = await lerArquivo(repo, caminho, pr.branch);
+      blocos.push(`### ${caminho}\nVersão que está no ${repo.padrao} (de outro trabalho já mesclado):\n\`\`\`\n${(doMain ?? '(o arquivo foi apagado no main)').slice(0, 12000)}\n\`\`\`\nA sua versão neste PR:\n\`\`\`\n${(seu ?? '').slice(0, 12000)}\n\`\`\``);
+    }
+    pr.reconstruir = { conflitantes, em: new Date().toISOString() };
+    marcar(pr, 'corrigindo');
+    const ordem = ordens.find((x) => x.id === pr.ultimaOrdem);
+    const indice = ordem ? ordem.respostas.findLastIndex((x) => x.repo?.pr === pr.numero) : -1;
+    if (ordem && indice >= 0) {
+      pedirCorrecao({
+        ordemId: ordem.id, indice,
+        texto: `O pull request #${pr.numero} ficou em conflito com o ${repo.padrao}: outro trabalho já mesclado mudou os mesmos arquivos (${conflitantes.join(', ') || 'veja abaixo'}). Junte as duas mudanças — mantenha o que o outro trabalho fez E o que você fez — e entregue a versão FINAL completa de cada um desses arquivos, no mesmo caminho. Não entregue os outros arquivos (eles já estão certos). Tentativa ${pr.conflitos} de ${MAX_CONFLITOS}.\n\n${blocos.join('\n\n')}`,
+      });
+      informar?.(`🔀 O PR #${pr.numero} entrou em conflito com o ${repo.padrao} (${conflitantes.join(', ')}): ${pr.agente} está juntando as mudanças.`);
+    }
+    console.log(`[github] PR #${pr.numero}: conflito em ${conflitantes.join(', ') || '?'}; ${pr.agente} vai juntar as mudanças`);
+    await gravar();
   }
 
   // Endereço publicado de um commit por um serviço de deploy ligado ao repositório
@@ -496,7 +630,10 @@ ${diff}`,
         if (pr.estado === 'cancelado') continue;
         if (['testando', 'revisando', 'corrigindo'].includes(pr.estado) && ordens.some((o) => (o.id === pr.ordemId || o.id === pr.ultimaOrdem) && o.cancelada)) { marcar(pr, 'cancelado'); await gravar(); continue; }
         if (pr.estado === 'revisando') { await procurarPreview(pr, repo); await veredito(pr, repo); continue; }
+        // PRs que ficaram em "conflito" antes desta versão: o escritório tenta resolver
+        if (pr.estado === 'conflito' && !pr.conflitos) { await resolverConflito(pr, repo); continue; }
         if (pr.estado !== 'testando') continue;
+        if (await emConflito(pr, repo)) { await resolverConflito(pr, repo); continue; }
         await procurarPreview(pr, repo);
         const { check_runs: checks = [] } = await gh('GET', `/repos/${repo.dono}/${repo.nome}/commits/${pr.sha}/check-runs`);
         const minutos = (Date.now() - Date.parse(pr.desde)) / 60000;
@@ -534,5 +671,5 @@ ${diff}`,
 
   const repoDe = (cliente) => repos[cliente] || null;
 
-  return { carregar, iniciar, ativo, publicarEntrega, arvore, repoDe, conferir, garantirRepo };
+  return { carregar, iniciar, ativo, publicarEntrega, arvore, arquivosAtuais, repoDe, conferir, garantirRepo };
 }

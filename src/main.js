@@ -90,6 +90,20 @@ const estacoes = new Map(); // id → { agente, boneco, estacao, estado, tarefa,
 // pausas: quem fica sem trabalho levanta, pega água/café, conversa, senta no sofá…
 const vida = new Vida({
   estacoes,
+  nomeDe: (id) => estacoes.get(id)?.agente.nome || id,
+  // assuntos do trabalho real: clientes cadastrados e o que cada um entregou nas últimas horas
+  contexto() {
+    const recentes = {};
+    const limite = Date.now() - 4 * 3600 * 1000;
+    for (const o of todasOrdens()) {
+      for (const r of o.respostas) {
+        if (r.erro || /^(Erro:|Interrompida:)/.test(r.texto) || Date.parse(r.em) < limite || o.origem?.revisaoPR) continue;
+        const pedido = o.texto.split('\n')[0].replace(/^[^\wÀ-ú]+/, '').slice(0, 48);
+        recentes[r.agente] = pedido.charAt(0).toLowerCase() + pedido.slice(1) + (o.texto.length > 48 ? '…' : '');
+      }
+    }
+    return { clientes: listaClientes.map((c) => c.nome), recentes };
+  },
   falar(id, texto) {
     const e = estacoes.get(id);
     if (!e || e.estado !== 'ocioso') return;
@@ -608,7 +622,7 @@ function blocoResposta(o, r, indice) {
   }
   // código no GitHub: PR e estado do CI
   if (r.repo?.url) { // erro do GitHub vai só para o registro de erros
-    const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito ao mesclar' };
+    const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito: precisa de um olhar humano', fechado: '🚫 PR fechado no GitHub', cancelado: '⛔ cancelado' };
     const linha = document.createElement('div');
     linha.className = 'pr-github';
     {
