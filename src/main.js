@@ -479,6 +479,7 @@ const SITUACAO = {
   tentando: { rotulo: '🔁 tentando de novo', classe: 'tentando' },
   problema: { rotulo: '⚠️ precisa de você', classe: 'problema' },
   concluida: { rotulo: '✅ concluída', classe: 'concluida' },
+  cancelada: { rotulo: '⛔ cancelada', classe: 'cancelada' },
 };
 const FILTROS = [
   ['novas', 'Novas'], ['andamento', 'Andamento'], ['problema', 'Atenção'], ['concluidas', 'Concluídas'], ['todas', 'Todas'],
@@ -523,6 +524,7 @@ const ultimaResposta = (o) => Math.max(0, ...familiaDe(o).flatMap((x) => x.respo
 
 // Situação de uma ordem sozinha (sem olhar o plano)
 function situacaoPropria(o) {
+  if (o.cancelada) return 'cancelada';
   if (o.desistida) return o.pai ? 'concluida' : 'problema'; // tarefa de plano que não deu: o Tech Lead já replanejou
   const prs = o.respostas.map((r) => r.repo?.estado).filter(Boolean);
   if (o.estado === 'falhou') return Object.values(o.tentativas || {}).some((t) => t.proxima) ? 'tentando' : 'problema';
@@ -535,9 +537,10 @@ function situacaoPropria(o) {
 // Situação do cartão inteiro: o pior estado da família manda
 function situacaoDe(o) {
   const ordem = ['problema', 'tentando', 'andamento', 'fila', 'concluida'];
+  if (o.cancelada) return 'cancelada';
   let pior = situacaoPropria(o);
   for (const x of familiaDe(o).slice(1)) {
-    const s = situacaoPropria(x);
+    const s = x.cancelada ? 'concluida' : situacaoPropria(x); // tarefa cancelada não segura o plano
     if (ordem.indexOf(s) < ordem.indexOf(pior)) pior = s;
   }
   // plano montado e tarefas prontas, mas a entrega final ainda vai ser pedida
@@ -556,7 +559,7 @@ function passaNoFiltro(o, f) {
   if (f === 'novas') return ehNova(o);
   if (f === 'andamento') return ['fila', 'andamento', 'tentando'].includes(s);
   if (f === 'problema') return s === 'problema';
-  if (f === 'concluidas') return s === 'concluida';
+  if (f === 'concluidas') return s === 'concluida' || s === 'cancelada';
   return true;
 }
 
@@ -615,6 +618,15 @@ function blocoResposta(o, r, indice) {
     }
     resp.appendChild(linha);
   }
+  if (r.repo?.erro) {
+    // não subiu ao GitHub: o escritório tenta de novo sozinho (o erro fica no registro de erros)
+    const proxima = r.repo.proxima ? new Date(r.repo.proxima).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+    resp.appendChild(Object.assign(document.createElement('div'), {
+      className: 'pr-github pendente',
+      textContent: r.repo.desistiu ? '⚠️ não subiu ao GitHub (peça um ↩ ajuste para tentar de novo)' : `⏳ ainda não subiu ao GitHub · tenta de novo${proxima ? ` às ${proxima}` : ' em instantes'}`,
+      title: r.repo.erro,
+    }));
+  }
   if (!r.simulada && !o.local) resp.appendChild(barraAvaliacao(o, r, indice));
   return resp;
 }
@@ -657,6 +669,21 @@ function linhasSupervisor(o, destino) {
   }
 }
 
+// Cancelar: o chefe não quer mais. Para a ordem e tudo o que ela gerou.
+async function cancelarOrdem(o, ev) {
+  ev?.stopPropagation();
+  const filhas = filhasDe(o).filter((f) => !f.cancelada && situacaoDe(f) !== 'concluida').length;
+  if (!confirm(`Cancelar "${o.texto.slice(0, 80)}"?${filhas ? `\n\nAs ${filhas} tarefa(s) do plano que ainda não terminaram também param.` : ''}\nNinguém tenta de novo e nada mais sobe ao GitHub.`)) return;
+  try {
+    const r = await fetch(`api/ordens/${encodeURIComponent(o.id)}/cancelar`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || `HTTP ${r.status}`);
+    avisar('⛔ Ordem cancelada.');
+  } catch (erro) {
+    avisar(`Não consegui cancelar: ${erro.message}`, true);
+  }
+}
+const podeCancelar = (o) => !o.local && !o.cancelada && ['fila', 'andamento', 'tentando', 'problema'].includes(situacaoDe(o));
+
 // Tarefa do plano (ou entrega final / revisão) dentro do cartão: uma linha que abre as respostas
 function blocoTarefa(f, rotulo) {
   const d = document.createElement('details');
@@ -671,6 +698,11 @@ function blocoTarefa(f, rotulo) {
   s.querySelector('.estado').title = SITUACAO[situacaoDe(f)].rotulo;
   s.querySelector('b').textContent = rotulo || nomeDe(f.para);
   s.querySelector('.txt').textContent = f.texto.split('\n')[0];
+  if (podeCancelar(f) && !f.consolidacao) {
+    const x = Object.assign(document.createElement('button'), { type: 'button', className: 'cancelar-tarefa', textContent: '✕', title: 'Cancelar esta tarefa' });
+    x.onclick = (ev) => { ev.preventDefault(); cancelarOrdem(f, ev); };
+    s.appendChild(x);
+  }
   d.appendChild(s);
   linhasSupervisor(f, d);
   f.respostas.forEach((r, i) => { if (!respostaFalhou(r)) d.appendChild(blocoResposta(f, r, i)); });
@@ -732,7 +764,7 @@ function renderizarOrdens() {
     li.className = `sit-${SITUACAO[situacao].classe}${nova ? ' nova' : ''}`;
     li.style.setProperty('--cor', corDe(o.para));
     // aberto: o que você abriu; senão, o que ainda pede atenção
-    const aberto = abertasNaMao.get(o.id) ?? (nova || situacao !== 'concluida');
+    const aberto = abertasNaMao.get(o.id) ?? (nova || !['concluida', 'cancelada'].includes(situacao));
     li.classList.toggle('recolhido', !aberto);
     li.innerHTML = '<div class="cab"><span class="avatar"></span><div class="quem-cab"><b></b><small></small></div><span class="chip"></span></div><div class="texto"></div>';
     pintarAvatar(li.querySelector('.avatar'), o.para);
@@ -801,6 +833,14 @@ function renderizarOrdens() {
       }
       for (const rev of revisoesDe(o)) li.appendChild(blocoTarefa(rev, `🧐 Revisão do PR #${rev.origem.revisaoPR.numero}`));
       if (!o.respostas.length && !filhas.length) li.appendChild(Object.assign(document.createElement('div'), { className: 'espera', textContent: situacao === 'fila' ? `Na fila de ${nomeDe(o.para)}.` : `${nomeDe(o.para)} está trabalhando nisso…` }));
+      if (podeCancelar(o)) {
+        const rodape = Object.assign(document.createElement('div'), { className: 'rodape-cartao' });
+        const b = Object.assign(document.createElement('button'), { type: 'button', className: 'cancelar-ordem', textContent: '⛔ Cancelar ordem', title: 'Não quero mais: para a ordem e as tarefas do plano dela' });
+        b.onclick = (ev) => cancelarOrdem(o, ev);
+        rodape.appendChild(b);
+        li.appendChild(rodape);
+      }
+      if (o.cancelada) li.appendChild(Object.assign(document.createElement('div'), { className: 'espera', textContent: `Cancelada por você às ${new Date(o.cancelada).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` }));
       if (nova) li.addEventListener('pointerenter', () => setTimeout(() => { if (li.matches(':hover')) { marcarVista(o); li.classList.remove('nova'); li.querySelector('.selo-nova')?.remove(); ui.contador('ordens', cartoes.filter((x) => ehNova(x) || situacaoDe(x) === 'problema').length || ''); } }, 1500), { once: true });
     }
     listaOrdens.appendChild(li);

@@ -702,3 +702,15 @@ body.modo-lista #reabrir-painel { display: none; }
 @media (max-width: 760px) {
   #reabrir-painel { top: auto; bottom: 182px; right: 8px; }
 }
+#lista-ordens .pr-github.pendente { color: var(--aguardando); }
+
+/* cancelar ordem */
+#lista-ordens .chip.cancelada { color: var(--suave); }
+#lista-ordens > li.sit-cancelada { opacity: .6; }
+#lista-ordens > li.sit-cancelada > .texto { text-decoration: line-through; text-decoration-color: #ffffff55; }
+#lista-ordens .rodape-cartao { display: flex; justify-content: flex-end; margin-top: 10px; }
+#lista-ordens .cancelar-ordem { font: inherit; font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 8px; cursor: pointer; color: #ffb4b9; background: none; border: 1px solid #ff4d5755; }
+#lista-ordens .cancelar-ordem:hover { background: #ff4d571a; color: #fff; }
+#lista-ordens .cancelar-tarefa { margin-left: auto; flex: none; font: inherit; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 6px; cursor: pointer; color: var(--suave); background: none; border: 1px solid transparent; }
+#lista-ordens .cancelar-tarefa:hover { color: #ffb4b9; border-color: #ff4d5755; }
+#lista-ordens .tarefa-plano.cancelada > summary .txt { text-decoration: line-through; }

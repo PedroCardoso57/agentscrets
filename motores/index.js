@@ -259,7 +259,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   async function executar(id, ordem) {
     const cfg = configuracao();
     const c = cfg[id];
-    if (!c) return;
+    if (!c || ordem.cancelada) return; // cancelada pelo chefe enquanto esperava na fila
     const podeDelegar = Boolean(c.delegar) && (!ordem.de || ordem.de === 'chefe') && !ordem.ajuste && !ordem.consolidacao; // delegadas, ajustes e entregas finais não são re-delegados
     registrarStatus({ id, status: 'trabalhando', tarefa: ordem.texto.slice(0, 140), motor: rotulo(c) });
     const inicio = Date.now();
@@ -276,7 +276,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
         registrarStatus({ id, status: 'aguardando', tarefa: 'Enviado ao motor externo' });
         return;
       }
-      if (podeDelegar) {
+      if (podeDelegar && !ordem.cancelada) { // cancelada no meio: a resposta fica, mas não vira plano
         const plano = lerPlano(resposta);
         if (plano) {
           const tarefas = (Array.isArray(plano.tarefas) ? plano.tarefas : [])

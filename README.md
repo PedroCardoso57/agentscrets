@@ -135,6 +135,8 @@ Use a barra de baixo da tela:
 - **NOVA** marca o cartão com resposta que você ainda não abriu (clique no cartão para marcar como vista). O número na aba Ordens soma as novas e as que precisam de você.
 - Filtros no topo: Novas · Andamento · Atenção (o que precisa de você) · Concluídas · Todas. Cartões concluídos e já vistos ficam recolhidos.
 
+**Cancelar:** não quer mais uma ordem? Abra o cartão e clique em **⛔ Cancelar ordem** (ou no **✕** de uma tarefa do plano). Ela para, e tudo o que ela gerou também: tarefas do plano, entrega final, ajustes e revisões de PR. Ninguém tenta de novo, nada mais sobe ao GitHub e o Tech Lead fica sabendo que você cancelou (o piloto automático não refaz). Se um agente estava no meio da resposta, ela chega e fica guardada, mas não vira plano nem PR. O cartão fica como **⛔ cancelada** (no filtro Concluídas).
+
 **Registro de erros:** as mensagens de erro (das IAs, do GitHub e os avisos do supervisor) não aparecem mais no meio das respostas nem como aviso na tela. Ficam num lugar só: clique em **erros** na faixa Hoje ou em **🗒 registro de erros** no painel de ordens. No cartão aparece só a situação (ex.: "tenta de novo às 17:43") com um link "ver erro".
 
 Sem o servidor rodando (ou no modo demo), os agentes simulados cumprem a ordem e respondem, marcados como *simulação*. Com `node servidor.js`, a ordem vai de verdade para os seus motores.
@@ -324,6 +326,8 @@ Com `GITHUB_TOKEN` no `.env`, o código que o time escreve deixa de ser só text
 5. **Revisão de código pelo QA.** Com o CI verde, o QA (ou `GITHUB_REVISOR`) lê o diff do PR e comenta no próprio PR. Ele só bloqueia por problemas reais (bug, segurança, perda de dados, requisito não atendido); aí o autor corrige no mesmo PR e o ciclo recomeça. CI e revisão somam no máximo 3 correções. `GITHUB_REVISAO=0` desliga a revisão.
 6. **Merge automático.** CI verde e revisão aprovada: o PR é mesclado (squash) e a branch apagada. Com `GITHUB_AUTO_MERGE=0`, ele fica aprovado esperando você.
 
+**Reenvio automático:** se uma entrega não conseguir subir ao GitHub (ex.: o token sem permissão), ela fica na fila e o escritório tenta de novo sozinho (em 2, 5, 10, 30 e 60 min, depois de hora em hora, por até 2 dias). Assim que o problema é resolvido, ela sobe e o Telegram avisa. As que falharam antes de o servidor subir também entram na fila.
+
 O cartão da entrega mostra o link do PR e o estado (testando, QA revisando, corrigindo, mesclado…), a ficha do cliente mostra o link do repositório e o Telegram avisa quando um PR abre, quando o QA pede mudanças e quando é mesclado.
 
 ### Preview: ver o sistema funcionando
@@ -342,7 +346,7 @@ Ligue os repositórios a um serviço de deploy que publica cada PR sozinho: **Cl
 
 O escritório só lê os endereços que o GitHub informa; o código gerado nunca roda no seu VPS. Esses serviços publicam sites e front-ends (React, Vue, páginas estáticas, funções). Um back-end com banco de dados precisa de um serviço próprio (ex.: Render, Railway, Fly.io), que também pode ser ligado ao repositório.
 
-**Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write), mais **Actions**, **Commit statuses** e **Deployments** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
+**Token:** crie um *fine-grained token* em github.com/settings/personal-access-tokens com acesso a *All repositories* e as permissões **Administration, Contents, Pull requests e Workflows** (Read and write; sem **Administration** o GitHub responde "403 Resource not accessible by personal access token" ao criar o repositório), mais **Actions**, **Commit statuses** e **Deployments** (Read-only). Coloque só no `.env` do VPS (`GITHUB_TOKEN=github_pat_...`), nunca no chat ou no código. Os minutos do GitHub Actions contam na cota gratuita da conta.
 
 ## Entregas: tudo o que a equipe já produziu
 
