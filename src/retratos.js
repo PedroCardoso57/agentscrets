@@ -41,7 +41,7 @@ function fundo(ctx, cor) {
 }
 
 export function retratoDe(agente) {
-  const chave = [agente.id, agente.cor, agente.cabelo, agente.pele].join('|');
+  const chave = [agente.id, agente.cor, agente.cabelo, agente.pele, agente.estilo, agente.barba, agente.feminina, agente.brinco].join('|');
   if (cache.has(chave)) return cache.get(chave);
   try {
     estudio ??= montarEstudio();

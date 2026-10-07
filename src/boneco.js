@@ -102,10 +102,8 @@ export class Boneco {
     cabeca.position.y = 0.16;
     cabeca.castShadow = true;
     this.pescoco.add(cabeca);
-    const cabelo = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), cabeloMat);
-    cabelo.position.set(0, 0.18, -0.015);
-    cabelo.rotation.x = -0.35;
-    this.pescoco.add(cabelo);
+    this.criarCabelo(agente.estilo || 'curto', cabeloMat);
+    if (agente.barba) this.criarBarba(cabeloMat, agente.barba);
     const olho = mat('#1b1d22');
     this.olhos = [-1, 1].map((lado) => {
       const o = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), olho);
@@ -114,10 +112,24 @@ export class Boneco {
       return o;
     });
     this.proximaPiscada = 1 + Math.random() * 4;
-    this.boca = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 6, 12, Math.PI), mat('#7a2f2f'));
+    this.boca = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 6, 12, Math.PI), mat(agente.feminina ? '#b8434f' : '#7a2f2f'));
     this.boca.position.set(0, 0.1, 0.16);
     this.boca.rotation.z = Math.PI;
     this.pescoco.add(this.boca);
+
+    if (agente.feminina) {
+      // cílios, brincos e uma silhueta um pouco mais fina
+      for (const lado of [-1, 1]) {
+        const cilio = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.008, 0.01), mat('#1b1d22'));
+        cilio.position.set(lado * 0.065, 0.205, 0.158);
+        cilio.rotation.z = lado * -0.25;
+        this.pescoco.add(cilio);
+        const brinco = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), mat(agente.brinco || '#e7c46a', { metalness: 0.8, roughness: 0.25 }));
+        brinco.position.set(lado * 0.168, 0.08, 0.01);
+        this.pescoco.add(brinco);
+      }
+      corpo.scale.set(0.9, 1, 0.72);
+    }
 
     if (agente.chefe) {
       // gravata
@@ -135,6 +147,80 @@ export class Boneco {
     this.copo.position.set(0, -0.06, 0.05);
     this.copo.visible = false;
     this.bracos.dir.mao.add(this.copo);
+  }
+
+  // Penteados: curto, topete, calvo, rabo (rabo de cavalo), volumoso (black power),
+  // coque, longo e bagunçado. A cabeça é uma esfera de raio 0,17 em (0, 0,16, 0).
+  criarCabelo(estilo, cabeloMat) {
+    const p = this.pescoco;
+    const add = (geo, x, y, z, escala, rot) => {
+      const m = new THREE.Mesh(geo, cabeloMat);
+      m.position.set(x, y, z);
+      if (escala) m.scale.set(...escala);
+      if (rot) m.rotation.set(...rot);
+      m.castShadow = true;
+      p.add(m);
+      return m;
+    };
+    const calota = (raio = 0.18, abertura = 0.55) => add(new THREE.SphereGeometry(raio, 20, 16, 0, Math.PI * 2, 0, Math.PI * abertura), 0, 0.18, -0.015, null, [-0.35, 0, 0]);
+    if (estilo === 'calvo') {
+      // coroa de cabelo nas laterais e atrás, topo careca
+      // o arco começa num lado, passa por trás e termina no outro (no plano horizontal)
+      const coroa = new THREE.Group();
+      coroa.position.set(0, 0.15, -0.01);
+      coroa.rotation.x = Math.PI / 2;
+      const anel = new THREE.Mesh(new THREE.TorusGeometry(0.162, 0.045, 10, 28, Math.PI * 1.2), cabeloMat);
+      anel.rotation.z = Math.PI * 0.9;
+      anel.scale.set(1, 1, 1.5);
+      coroa.add(anel);
+      p.add(coroa);
+      return;
+    }
+    if (estilo === 'volumoso') {
+      // black power: volume em volta da cabeça, deixando o rosto livre
+      add(new THREE.SphereGeometry(0.235, 22, 18), 0, 0.23, -0.085, [1, 0.95, 0.92]);
+      return;
+    }
+    calota();
+    if (estilo === 'topete') {
+      // topete: uma onda de cabelo levantada na frente
+      add(new THREE.SphereGeometry(0.1, 16, 12), 0.015, 0.3, 0.1, [1.35, 0.55, 0.9], [0.5, 0, 0.08]);
+    } else if (estilo === 'rabo') {
+      add(new THREE.SphereGeometry(0.05, 10, 8), 0, 0.24, -0.17); // prendedor
+      add(new THREE.CapsuleGeometry(0.055, 0.2, 6, 10), 0, 0.08, -0.22, null, [0.35, 0, 0]);
+    } else if (estilo === 'coque') {
+      add(new THREE.SphereGeometry(0.085, 14, 12), 0, 0.33, -0.1);
+      add(new THREE.TorusGeometry(0.06, 0.012, 6, 16), 0, 0.29, -0.08, null, [Math.PI / 2 - 0.5, 0, 0]);
+    } else if (estilo === 'longo') {
+      // cabelo até os ombros: painel atrás e mechas dos lados
+      add(new THREE.CapsuleGeometry(0.16, 0.16, 6, 14), 0, 0.06, -0.07, [1.12, 1, 0.62]);
+      for (const lado of [-1, 1]) add(new THREE.CapsuleGeometry(0.045, 0.2, 6, 10), lado * 0.15, 0.06, 0.04);
+    } else if (estilo === 'baguncado') {
+      for (let i = 0; i < 5; i++) add(new THREE.ConeGeometry(0.05, 0.12, 6), (i - 2) * 0.06, 0.3 - Math.abs(i - 2) * 0.02, -0.04 - Math.abs(i - 2) * 0.02, null, [-0.5, 0, (i - 2) * 0.35]);
+    }
+  }
+
+  // barba: 'curta' (rente ao queixo) ou 'cheia'
+  criarBarba(cabeloMat, tipo) {
+    const cheia = tipo === 'cheia';
+    // queixo e mandíbula, logo abaixo da boca (que continua à mostra)
+    const barba = new THREE.Mesh(new THREE.SphereGeometry(0.174, 22, 12, 0, Math.PI * 2, Math.PI * (cheia ? 0.635 : 0.66), Math.PI * 0.3), cabeloMat);
+    barba.position.set(0, 0.158, 0.006);
+    barba.scale.set(1.03, cheia ? 1.08 : 1.02, 1.1);
+    this.pescoco.add(barba);
+    if (cheia) {
+      // costeletas finas ligando a barba ao cabelo
+      for (const lado of [-1, 1]) {
+        const costeleta = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.07, 4, 8), cabeloMat);
+        costeleta.position.set(lado * 0.166, 0.14, 0.035);
+        costeleta.rotation.z = lado * 0.12;
+        this.pescoco.add(costeleta);
+      }
+    }
+    const bigode = new THREE.Mesh(new THREE.CapsuleGeometry(0.013, 0.07, 4, 8), cabeloMat);
+    bigode.rotation.z = Math.PI / 2;
+    bigode.position.set(0, 0.128, 0.163);
+    this.pescoco.add(bigode);
   }
 
   // Acessórios por função: fone no Designer, óculos no QA e no Analista de requisitos,

@@ -974,7 +974,7 @@ integracao = criarIntegracao({
       funcao: dados.funcao || '',
       atividade: dados.atividade || 'digitar',
       cor: dados.cor || cores[agentes.length % cores.length],
-      cabelo: dados.cabelo, pele: dados.pele,
+      cabelo: dados.cabelo, pele: dados.pele, estilo: dados.estilo, barba: dados.barba, feminina: Boolean(dados.feminina),
       id: dados.id,
     });
     montar();
