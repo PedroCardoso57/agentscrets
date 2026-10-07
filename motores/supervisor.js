@@ -19,7 +19,8 @@ const JANELA_MS = 12 * 3600 * 1000; // ordens antigas do histórico não são re
 
 const falhou = (r) => r && (r.erro || /^(Erro:|Interrompida:)/.test(r.texto));
 
-export function criarSupervisor({ ordens, equipe, redespachar, criarOrdem, registrarStatus, estadoDe, avisarChefe, mudou }) {
+// iaFora(agente): a IA dele (e a reserva) está fora pelo monitor de IAs → espera ela voltar, sem gastar tentativas
+export function criarSupervisor({ ordens, equipe, redespachar, criarOrdem, registrarStatus, estadoDe, avisarChefe, mudou, iaFora = () => false }) {
   let relogio = null;
   let acompanhando = false; // o Orquestrador está com status "Acompanhando…"
 
@@ -115,9 +116,10 @@ export function criarSupervisor({ ordens, equipe, redespachar, criarOrdem, regis
         if (situacao(o, agente) !== 'falhou') continue;
         if (cfg[agente]?.provedor === 'webhook') continue; // motor externo: ele mesmo responde
         if (!cfg[agente]) { desistir(o, agente, `${agente} não está mais na equipe`); break; }
+        if (iaFora(agente)) continue; // o monitor de IAs retoma quando ela voltar
         const t = agendar(o, agente, o.respostas.filter((r) => r.agente === agente).at(-1));
         if (!t.proxima) { desistir(o, agente, t.ultimoErro || 'erro'); break; }
-        if (Date.parse(t.proxima) <= agora && estadoDe(agente) !== 'trabalhando') tentarDeNovo(o, agente);
+        if (Date.parse(t.proxima) <= agora && estadoDe(agente) !== 'trabalhando' && !o.reexecutando?.includes(agente)) tentarDeNovo(o, agente);
       }
       // planos do Orquestrador: acompanha até todas as tarefas ficarem prontas
       if (o.pai || o.consolidacao || o.consolidada || !filhosDe(o).length) continue;
@@ -141,7 +143,7 @@ export function criarSupervisor({ ordens, equipe, redespachar, criarOrdem, regis
   function agenteMudou(id) {
     let n = 0;
     for (const o of ordens) {
-      if (o.desistida || !alvosDe(o).includes(id) || situacao(o, id) !== 'falhou') continue;
+      if (o.desistida || !alvosDe(o).includes(id) || situacao(o, id) !== 'falhou' || o.reexecutando?.includes(id)) continue; // já está tentando de novo
       o.tentativas ??= {};
       o.tentativas[id] = { n: 0 }; // agente novo, contagem nova
       agendar(o, id, o.respostas.filter((r) => r.agente === id).at(-1));

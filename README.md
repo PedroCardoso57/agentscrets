@@ -236,7 +236,7 @@ A sala tem copa (balcão, cafeteira com vapor, pia, geladeira, bebedouro e mesa 
 
 - **Barra lateral** com os menus (no celular vira a barra de baixo); passe o mouse para ver o nome de cada um. ⌂ volta para a visão do escritório todo.
 - **Faixa "Hoje"** no topo: entregas do dia, quem está trabalhando, erros e a próxima rotina.
-- **Painel com abas** Ordens | Equipe, **redimensionável**: arraste a borda esquerda para alargar (duplo clique volta ao padrão). Cada ordem é um cartão com a fotinha do agente (um retrato 3x4 do bonequinho dele, com o cabelo, os óculos, o fone ou o capacete de cada um; também na lista da Equipe e nos avisos); respostas com código mostram só a explicação e os arquivos como etiquetas ("ver código" abre tudo).
+- **Painel com abas** Ordens | Equipe, **redimensionável**: arraste a borda esquerda para alargar ou diminuir (duplo clique volta ao padrão). O botão » no canto **minimiza** o painel: ele vira uma abinha "Ordens" (com o número de novidades) e o escritório ocupa a tela toda. Cada ordem é um cartão com a fotinha do agente (um retrato 3x4 do bonequinho dele, com o cabelo, os óculos, o fone ou o capacete de cada um; também na lista da Equipe e nos avisos); respostas com código mostram só a explicação e os arquivos como etiquetas ("ver código" abre tudo).
 - **Avisos** no canto de baixo, sem cobrir a cena, quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
 - **Etiquetas na cena** sem se sobrepor (quem está atrás sobe um pouco). De longe aparecem só os nomes e as falas; a tarefa de cada um aparece quando você aproxima a câmera. Os balões mostram só a primeira frase.
 - **Equipe com cara própria**: cada bonequinho tem um penteado (topete, black power, rabo de cavalo, cabelo bagunçado, calvo, coque…), alguns com barba, e a equipe tem três mulheres (Requisitos, Designer e Documentadora, com cílios e brincos). Dá para mudar em `src/agentes.js` (`estilo`, `barba`, `feminina`, `brinco`, `cabelo`, `pele`).
@@ -285,6 +285,26 @@ Na janela **🗓 Rotinas** ficam o liga/desliga, o intervalo (padrão: 60 min), 
   - quando todas as tarefas ficam prontas, ele junta tudo numa **🏁 entrega final** para você.
   - Para desligar a entrega final: `ORQUESTRADOR_CONSOLIDAR=0` no `.env`.
 - Erros antigos do histórico (mais de 12 horas) não são refeitos, para não gastar cota à toa.
+
+### 🩺 Monitor de IAs: quais estão funcionando
+
+O servidor confere sozinho, a cada 15 minutos (`SAUDE_INTERVALO_MIN`), cada IA que a equipe usa: se a chave existe, se o provedor aceita a chave e se o modelo escolhido existe. Essa conferência só lista os modelos, então não gasta tokens. Ele também aprende com o uso: se uma tarefa falha por falta de crédito, limite de uso ou chave recusada, a IA é marcada na hora; quando ela volta a responder, a marca sai.
+
+- **Onde ver:** no topo da aba **Equipe** ("IAs: todas funcionando" ou quais estão com problema, com o botão **verificar agora**) e um selo vermelho no agente afetado.
+- **Avisos:** quando uma IA cai, o aviso vai para o registro de erros e para o Telegram; quando volta, aparece um aviso verde e o Telegram avisa também.
+- **Desvio automático:** se a IA de um agente está sem crédito, sem chave, com chave recusada ou com um modelo que não existe, ele usa direto a IA reserva (sem perder tempo tentando).
+- **Nada se perde:** enquanto a IA (e a reserva) estiver fora, o supervisor espera em vez de gastar as tentativas; quando ela volta, as tarefas paradas são retomadas na hora.
+- Uma IA marcada com limite ou sem crédito recebe, de tempos em tempos, um "ok" bem curto (poucos tokens) para saber se já voltou. `SAUDE_IAS=0` desliga o monitor.
+
+### 📈 Painel "Monitor de IAs": teste de todas as IAs
+
+No ícone de pulso da barra lateral (ou em **monitor**, na aba Equipe). O botão **Testar todas agora**:
+
+1. para cada provedor com chave no `.env` (Claude, OpenAI, Gemini) e cada API compatível usada pela equipe, lista os modelos que a sua chave enxerga;
+2. manda um "ok" bem curto para cada modelo de conversa (poucos tokens por modelo; modelos de imagem, voz e embeddings ficam de fora; APIs compatíveis com centenas de modelos testam os da equipe e mais 20);
+3. mostra quais responderam e em quanto tempo e, para quem falhou, o **motivo real** (a mensagem do provedor, ex.: "Your credit balance is too low…", "model not found", "API key not valid"), com o erro completo para abrir.
+
+Os modelos usados pela equipe aparecem marcados (e quem os usa como reserva), e o resultado também atualiza o monitor automático. Dá para filtrar: todas, só as da equipe, só com problema.
 
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":

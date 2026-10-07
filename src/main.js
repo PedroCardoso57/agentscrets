@@ -16,6 +16,7 @@ import { Efeitos } from './efeitos.js';
 import { Vida } from './vida.js';
 import { criarRegistroErros } from './erros.js';
 import { retratosDa } from './retratos.js';
+import { criarMonitorIas } from './monitor-ias.js';
 
 // ---------- renderização ----------
 
@@ -215,9 +216,63 @@ function montarPainel() {
   ui.contador('equipe', estacoes.size);
 }
 
+// ---------- status das IAs (monitor do servidor) ----------
+const estadoIas = { ias: [], agentes: {} };
+const resumoIas = document.createElement('div');
+resumoIas.className = 'resumo-ias';
+resumoIas.hidden = true;
+lista.before(resumoIas);
+let carregandoIas = null;
+function carregarIas(forcar = false) {
+  if (!integracao?.servidorAtivo()) return;
+  clearTimeout(carregandoIas);
+  carregandoIas = setTimeout(async () => {
+    try {
+      const r = await fetch(forcar ? 'api/ias/verificar' : 'api/ias', { method: forcar ? 'POST' : 'GET' });
+      if (!r.ok) return;
+      Object.assign(estadoIas, await r.json());
+      desenharIas();
+    } catch { /* sem servidor */ }
+  }, forcar ? 0 : 300);
+}
+function desenharIas() {
+  const { ias } = estadoIas;
+  resumoIas.hidden = !ias.length;
+  const problemas = ias.filter((ia) => !['ok', 'verificando', 'externo'].includes(ia.estado));
+  resumoIas.classList.toggle('alerta', problemas.length > 0);
+  resumoIas.innerHTML = '<div class="topo-ias"><b></b><button type="button" class="abrir-monitor">monitor</button><button type="button" class="verificar">verificar agora</button></div><ul></ul>';
+  resumoIas.querySelector('.abrir-monitor').onclick = () => monitorIas.abrir();
+  resumoIas.querySelector('b').textContent = problemas.length
+    ? `IAs: ${problemas.length} com problema · ${ias.length - problemas.length} ok`
+    : `IAs: todas funcionando (${ias.filter((ia) => ia.estado === 'ok').length})`;
+  const botao = resumoIas.querySelector('.verificar');
+  botao.onclick = async () => { botao.disabled = true; botao.textContent = 'verificando…'; await carregarIas(true); };
+  const ul = resumoIas.querySelector('ul');
+  for (const ia of [...problemas, ...ias.filter((x) => !problemas.includes(x))]) {
+    const li = document.createElement('li');
+    li.className = `ia ${ia.estado}`;
+    li.innerHTML = '<span class="estado-ia"></span><span class="nome-ia"></span><small></small>';
+    li.querySelector('.estado-ia').textContent = ia.descricao;
+    li.querySelector('.nome-ia').textContent = ia.rotulo;
+    const usos = [ia.agentes.length ? `usada por ${ia.agentes.map(nomeDe).join(', ')}` : '', ia.reservaDe.length ? `reserva de ${ia.reservaDe.map(nomeDe).join(', ')}` : ''].filter(Boolean).join(' · ');
+    li.querySelector('small').textContent = [usos, ia.verificadoEm ? `conferida às ${new Date(ia.verificadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''].filter(Boolean).join(' · ');
+    if (ia.mensagem) li.title = ia.mensagem;
+    ul.appendChild(li);
+  }
+  for (const e of estacoes.values()) if (e.item) atualizarSubtitulo(e);
+}
+
 function atualizarSubtitulo(e) {
   const partes = [e.agente.funcao, e.agente.motor].filter(Boolean);
   e.item.querySelector('.nome small').textContent = partes.length ? `· ${partes.join(' · ')}` : '';
+  // situação da IA do agente (do monitor): só aparece quando há problema
+  const ia = estadoIas.agentes[e.agente.id];
+  let selo = e.item.querySelector('.selo-ia');
+  if (ia && !['ok', 'verificando', 'externo'].includes(ia.estado)) {
+    if (!selo) { selo = Object.assign(document.createElement('span'), { className: 'selo-ia' }); e.item.querySelector('.nome').after(selo); }
+    selo.textContent = `IA: ${ia.descricao}`;
+    selo.title = ia.mensagem || '';
+  } else selo?.remove();
 }
 
 // Seleciona o agente para a próxima ordem e foca a câmera nele.
@@ -937,6 +992,8 @@ integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoClientes: (lista) => gestao?.definirClientes(lista),
   aoAviso: (aviso) => registroErros?.adicionarAviso(aviso), // vai para o registro de erros (sem aviso na tela)
+  aoAvisoOk: ({ texto }) => ui.avisar({ icone: '✅', titulo: 'IA de volta', texto: texto.replace(/^✅\s*/, ''), cor: 'var(--trabalhando)', duracao: 8000 }),
+  aoIas: (porAgente) => { estadoIas.agentes = porAgente; carregarIas(); },
   aoDecisor({ ativo, online }) {
     cranio.grupo.visible = ativo;
     cranio.definirOnline(online);
@@ -989,7 +1046,7 @@ integracao = criarIntegracao({
     conexao.textContent = `● ${texto}`;
     conexao.classList.toggle('online', online);
     // ao conectar no servidor, busca os clientes (para o seletor da barra de ordens)
-    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); registroErros?.recarregar(); }
+    if (online && gestao && !clientesCarregados && integracao?.servidorAtivo()) { clientesCarregados = true; gestao?.carregarClientes(); registroErros?.recarregar(); carregarIas(); }
   },
 });
 
@@ -998,6 +1055,8 @@ registroErros = criarRegistroErros({
   servidorAtivo: () => integracao.servidorAtivo(), aoMudar: () => atualizarHoje(),
 });
 document.getElementById('abrir-erros').addEventListener('click', () => registroErros.abrir());
+const monitorIas = criarMonitorIas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, aoTerminar: () => carregarIas() });
+document.getElementById('abrir-monitor-ias').addEventListener('click', () => monitorIas.abrir());
 
 janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
 criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, pedirAjuste: (...a) => integracao.pedirAjuste(...a) });

@@ -42,6 +42,8 @@ import { criarRotinas, ontem } from './motores/rotinas.js';
 import { criarSupervisor } from './motores/supervisor.js';
 import { criarAutopiloto } from './motores/autopiloto.js';
 import { criarRepositorios } from './motores/repositorios.js';
+import { criarSaude } from './motores/saude.js';
+import { criarTesteIas } from './motores/teste-ias.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -367,7 +369,28 @@ const supervisor = criarSupervisor({
     telegram.avisar(texto);
     documentacao?.registrar(texto);
   },
+  // IA do agente fora (sem crédito, chave recusada…) e sem reserva funcionando: espera o monitor avisar que voltou
+  iaFora(agente) {
+    const cfg = motores.equipe();
+    const c = cfg[agente];
+    if (!c || !saude.bloqueada(c)) return false;
+    const r = c.reserva && cfg[c.reserva];
+    return !r || r.provedor === 'webhook' || Boolean(saude.bloqueada(r));
+  },
 });
+// Monitor de IAs: confere de tempos em tempos quais IAs da equipe estão funcionando
+const saude = criarSaude({
+  equipe: () => motores.equipe(),
+  avisar(texto, tipo) {
+    if (tipo === 'problema') registrarAviso(texto); // vai para o registro de erros
+    else transmitirSemSalvar('aviso-ok', { texto });
+    telegram.avisar(texto);
+  },
+  aoVoltar: (agentes) => { for (const id of agentes) supervisor.agenteMudou(id); }, // IA voltou: retoma o que estava parado
+  mudou: () => transmitirSemSalvar('ias', saude.porAgente()),
+});
+// Painel "Monitor de IAs": testa todas as IAs que as chaves enxergam
+const testeIas = criarTesteIas({ equipe: () => motores.equipe(), aoResultado: (conf, erro) => saude.registrarUso(conf, erro) });
 const autopiloto = criarAutopiloto({
   dadosDir: DADOS_DIR,
   ordens,
@@ -576,6 +599,10 @@ async function atender(req, res) {
     try { dados = await lerCorpo(req); } catch { return enviarJSON(res, 400, { erro: 'JSON inválido' }); }
     try { return enviarJSON(res, 200, { modelos: await motores.modelos(dados) }); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
   }
+  if (rota === '/api/ias' && req.method === 'GET') return enviarJSON(res, 200, { ias: saude.listar(), agentes: saude.porAgente() });
+  if (rota === '/api/ias/teste' && req.method === 'GET') return enviarJSON(res, 200, testeIas.ver());
+  if (rota === '/api/ias/teste' && req.method === 'POST') return enviarJSON(res, 200, await testeIas.rodar());
+  if (rota === '/api/ias/verificar' && req.method === 'POST') return enviarJSON(res, 200, { ias: await saude.verificar(), agentes: saude.porAgente() });
   if (rota === '/api/motores/restaurar' && req.method === 'POST') { await motores.restaurar(); return enviarJSON(res, 200, motores.listar()); }
 
   const motor = rota.match(/^\/api\/motores\/([\w-]{1,40})(\/testar)?$/);
@@ -594,6 +621,7 @@ async function atender(req, res) {
       if (motor[2]) return enviarJSON(res, 200, await motores.testar(motor[1], dados));
       const config = await motores.salvarAgente(motor[1], dados);
       supervisor.agenteMudou(motor[1]); // consertou o agente: o que estava parado com ele volta agora
+      saude.verificar().catch(() => {}); // e confere a IA nova
       documentacao.registrar(`Equipe: ${motor[1]} agora usa ${motores.rotulo(config)}${config.funcao ? ` (função: ${config.funcao})` : ''}`);
       return enviarJSON(res, 200, { ok: true, config });
     } catch (erro) {
@@ -708,6 +736,7 @@ await entregas.carregar(ordens);
 telegram.iniciar();
 motores.iniciar(estado);
 supervisor.iniciar();
+saude.iniciar();
 await autopiloto.carregar();
 autopiloto.iniciar();
 await repositorios.carregar();

@@ -147,8 +147,39 @@ function esperaPedida(erro) {
  * (quando é limite por minuto) e, se continuar, usa a IA do agente reserva (c.reserva).
  * Devolve { texto, usado } — usado é a configuração que respondeu (a do agente ou a reserva).
  */
+// O monitor de IAs (saude.js) observa cada chamada e pode dizer que uma IA está
+// fora (sem crédito, chave recusada…): aí o agente vai direto para a reserva.
+const observador = { aoResultado: () => {}, bloqueada: () => null };
+export function observarIA({ aoResultado, bloqueada }) {
+  if (aoResultado) observador.aoResultado = aoResultado;
+  if (bloqueada) observador.bloqueada = bloqueada;
+}
+
 export async function chamarIA(c, args, { cfg = {}, aoEsperar = () => {} } = {}) {
-  const chamar = (conf) => PROVEDORES[conf.provedor]({ ...conf, ...args });
+  const chamar = async (conf) => {
+    if (conf.provedor === 'webhook') return PROVEDORES.webhook({ ...conf, ...args });
+    try {
+      const texto = await PROVEDORES[conf.provedor]({ ...conf, ...args });
+      observador.aoResultado(conf, null);
+      return texto;
+    } catch (erro) {
+      observador.aoResultado(conf, erro);
+      throw erro;
+    }
+  };
+  const reservaDe = () => {
+    const r = c.reserva && cfg[c.reserva];
+    if (!r || r.provedor === 'webhook') return null;
+    // a reserva só empresta a IA (provedor, modelo, chave); o papel e as instruções continuam do agente
+    return { provedor: r.provedor, modelo: r.modelo, baseUrl: r.baseUrl, chaveEnv: r.chaveEnv, esforco: r.esforco, internet: c.internet && ['anthropic', 'gemini'].includes(r.provedor) };
+  };
+  // a IA do agente está fora (pelo monitor) e há reserva funcionando: nem tenta, vai direto
+  const motivo = observador.bloqueada(c);
+  const reserva = motivo && reservaDe();
+  if (reserva && !observador.bloqueada(reserva)) {
+    aoEsperar(`IA principal ${motivo}: usando a reserva (${c.reserva})`);
+    return { texto: await chamar(reserva), usado: { ...reserva, reservaDe: c.reserva } };
+  }
   try {
     return { texto: await chamar(c), usado: c };
   } catch (erro) {
@@ -163,13 +194,11 @@ export async function chamarIA(c, args, { cfg = {}, aoEsperar = () => {} } = {})
         ultimo = erro2;
       }
     }
-    const r = c.reserva && cfg[c.reserva];
-    if (!r || r.provedor === 'webhook') {
+    const conf = reservaDe();
+    if (!conf) {
       throw new Error(`limite de uso da IA atingido${c.reserva ? '' : ' (dica: escolha uma IA reserva em ⚙ Equipe)'}: ${ultimo.message.slice(0, 300)}`);
     }
     aoEsperar(`Limite da IA: usando a reserva (${c.reserva})`);
-    // a reserva só empresta a IA (provedor, modelo, chave); o papel e as instruções continuam do agente
-    const conf = { provedor: r.provedor, modelo: r.modelo, baseUrl: r.baseUrl, chaveEnv: r.chaveEnv, esforco: r.esforco, internet: c.internet && ['anthropic', 'gemini'].includes(r.provedor) };
     return { texto: await chamar(conf), usado: { ...conf, reservaDe: c.reserva } };
   }
 }

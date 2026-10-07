@@ -17,9 +17,20 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
   }
   for (const a of abas) a.addEventListener('click', () => mostrarAba(a.dataset.aba));
 
+  // painel minimizável: some e vira uma abinha na lateral (a escolha fica guardada)
+  const reabrir = document.getElementById('reabrir-painel');
+  function minimizarPainel(sim) {
+    document.body.classList.toggle('painel-minimizado', sim);
+    reabrir.hidden = !sim;
+    try { localStorage.setItem('painel-minimizado', sim ? '1' : ''); } catch { /* sem armazenamento */ }
+  }
+  document.querySelector('#painel .minimizar-painel').addEventListener('click', () => minimizarPainel(true));
+  reabrir.addEventListener('click', () => minimizarPainel(false));
+  try { if (localStorage.getItem('painel-minimizado') === '1') minimizarPainel(true); } catch { /* sem armazenamento */ }
+
   // painel redimensionável: arraste a borda esquerda (a largura fica guardada neste navegador)
   const raiz = document.documentElement;
-  const LARGURA = { min: 300, max: 680 };
+  const LARGURA = { min: 260, max: 680 };
   const aplicarLargura = (px) => raiz.style.setProperty('--painel-largura', `${Math.round(Math.min(LARGURA.max, Math.max(LARGURA.min, px)))}px`);
   try { const salva = Number(localStorage.getItem('painel-largura')); if (salva) aplicarLargura(salva); } catch { /* sem armazenamento */ }
   const alca = Object.assign(document.createElement('div'), { className: 'alca-painel', title: 'Arraste para mudar a largura do painel' });
@@ -42,6 +53,7 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
   function contador(nome, valor) {
     const el = document.querySelector(`[data-contador="${nome}"]`);
     if (el) el.textContent = valor ? String(valor) : '';
+    if (nome === 'ordens') document.querySelector('.contador-reabrir').textContent = valor ? String(valor) : '';
   }
 
   // ---------- faixa "Hoje" ----------
@@ -167,6 +179,7 @@ export function criarInterface({ aoVisaoGeral, aoMudarModo }) {
 
   // destaca o cartão de uma ordem no painel
   function destacarOrdem(id) {
+    if (document.body.classList.contains('painel-minimizado')) minimizarPainel(false);
     mostrarAba('ordens');
     if (modoLista === undefined) return;
     const li = document.querySelector(`#lista-ordens > li[data-ordem="${CSS.escape(id)}"]`);

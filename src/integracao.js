@@ -28,7 +28,7 @@ const TAREFAS_DEMO = {
   documentador: ['Escrevendo o README', 'Documentando a API', 'Manual do usuário do ERP'],
 };
 
-export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {}, aoAviso = () => {} }) {
+export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoOrdem, aoDecisor = () => {}, aoDocumentacao = () => {}, aoRemovido = () => {}, aoClientes = () => {}, aoAviso = () => {}, aoIas = () => {}, aoAvisoOk = () => {} }) {
   const params = new URLSearchParams(location.search);
   let demo = null;
   let servidorAtivo = false;
@@ -188,6 +188,8 @@ export function criarIntegracao({ ids, aoAtualizar, aoNovoAgente, aoConexao, aoO
     };
     fonte.addEventListener('ordem', (e) => { try { receberOrdem(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('aviso', (e) => { try { aoAviso(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('aviso-ok', (e) => { try { aoAvisoOk(JSON.parse(e.data)); } catch { /* ignora */ } });
+    fonte.addEventListener('ias', (e) => { try { aoIas(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('clientes', (e) => { try { aoClientes(JSON.parse(e.data)); } catch { /* ignora */ } });
     fonte.addEventListener('removido', (e) => { try { aoRemovido(JSON.parse(e.data).id); } catch { /* ignora */ } });
     fonte.addEventListener('documentacao', (e) => { try { aoDocumentacao(JSON.parse(e.data)); } catch { /* ignora */ } });

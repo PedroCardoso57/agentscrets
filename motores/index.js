@@ -302,7 +302,8 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
       console.error(`[${id}] ordem ${ordem.id}: ${erro.message}`);
       registrarResposta(ordem, id, `Erro: ${erro.message}`, { ...meta(), erro: true });
       atualizarOrdem(ordem);
-      registrarStatus({ id, status: 'erro', tarefa: erro.message.slice(0, 140) });
+      // status curto: de erros em JSON ({"error":{"message":"..."}}) fica só a mensagem
+      registrarStatus({ id, status: 'erro', tarefa: (erro.message.match(/"message"\s*:\s*"([^"]{3,})"/)?.[1] || erro.message).slice(0, 140) });
       return;
     }
     setTimeout(() => registrarStatus({ id, status: 'ocioso', tarefa: '' }), VOLTAR_AO_OCIOSO);
@@ -342,7 +343,8 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     for (const ordem of ordens) {
       if (ordem.estado === 'pendente') { despachar(ordem); continue; }
       // em andamento quando o servidor caiu: avisa em vez de repetir (e pagar de novo) sem você saber
-      const interrompidos = ordem.entregue.filter((id) => cfg[id] && cfg[id].provedor !== 'webhook' && !ordem.respostas.some((r) => r.agente === id));
+      // (inclui quem estava tentando de novo: a tentativa se perdeu com o reinício)
+      const interrompidos = ordem.entregue.filter((id) => cfg[id] && cfg[id].provedor !== 'webhook' && (!ordem.respostas.some((r) => r.agente === id) || ordem.reexecutando?.includes(id)));
       for (const id of interrompidos) registrarResposta(ordem, id, 'Interrompida: o servidor reiniciou durante a tarefa. O supervisor vai tentar de novo.');
       if (interrompidos.length) atualizarOrdem(ordem);
     }
