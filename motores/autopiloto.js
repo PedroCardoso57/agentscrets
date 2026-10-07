@@ -9,6 +9,7 @@
 //   - o limite de planos do dia foi atingido, ou está fora do horário escolhido.
 // Fica em DADOS_DIR/autopiloto.json e liga/desliga na janela 🗓 Rotinas.
 
+import { gravarArquivo } from './gravar.js';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -35,8 +36,7 @@ export function criarAutopiloto({ dadosDir, ordens, equipe, clientes, criarOrdem
 
   async function gravar() {
     await mkdir(dadosDir, { recursive: true });
-    await writeFile(`${arquivo}.tmp`, JSON.stringify({ cfg, estado }, null, 2));
-    await rename(`${arquivo}.tmp`, arquivo);
+    await gravarArquivo(arquivo, JSON.stringify({ cfg, estado }, null, 2));
   }
 
   const tech = () => Object.entries(equipe()).find(([, c]) => c.delegar)?.[0] || null;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CORREDOR_X } from './escritorio.js';
+import { montarConversa } from './conversas.js';
 
 // Vida no escritório: quem fica sem trabalho um tempo levanta e faz uma pausa —
 // pega água ou café (às vezes chamando um colega para conversar), senta no sofá,
@@ -22,16 +23,13 @@ const ATIVIDADES = [
   { nome: 'reunião', ponto: 'reuniao', gesto: 'conversar', pessoas: [2, 3], peso: 2 },
 ];
 
-const PAPO = [
-  'Café?', 'Bora!', 'Viu o deploy de ontem?', 'O QA achou mais um bug 😅', 'Esse cliente pediu mais uma tela…',
-  'Já subiu pra produção?', 'Qual stack você usaria?', 'Preciso de 5 minutos', 'Reunião às 15h?', 'Tá rodando liso',
-  'Testou no celular?', 'Hoje o Tech Lead tá inspirado', 'Faltou só o README', 'Vou refatorar aquilo', 'Que calor hoje',
-];
 
 export class Vida {
-  constructor({ estacoes, falar }) {
+  constructor({ estacoes, falar, nomeDe = (id) => id, contexto = () => ({}) }) {
     this.estacoes = estacoes; // id → { grupo, boneco, estado, agente }
     this.falar = falar;       // (id, texto) → mostra no balão do agente
+    this.nomeDe = nomeDe;
+    this.contexto = contexto; // () → { clientes, recentes }: assuntos do trabalho real
     this.pontos = null;       // pontos da sala (no mundo)
     this.agentes = new Map(); // id → { fase, ocioso, limite, rotaMundo, atividade, ate, falaEm, grupo }
   }
@@ -77,6 +75,7 @@ export class Vida {
     const volta = [...s.rotaMundo].reverse().slice(1); // do ponto atual de volta para trás da cadeira
     e.boneco.irPor([...this.local(e, volta), new THREE.Vector3()], null);
     s.fase = 'voltando';
+    s.conversa = null;
   }
 
   // Escolhe uma pausa para quem está parado há tempo (e chama colegas, se for em grupo).
@@ -128,11 +127,22 @@ export class Vida {
         const emGrupo = s.grupo.length > 1;
         e.boneco.comCopo = Boolean(s.atividade.copo);
         e.boneco.gesto = emGrupo && s.atividade.gesto !== 'relaxar' ? 'conversar' : s.atividade.gesto;
-        s.falaEm = t + this.sorteio(1, 4);
+        // quem puxou a pausa conduz a conversa (um fala, o outro responde)
+        if (emGrupo && s.grupo[0] === id && !s.conversa) s.conversa = { falas: montarConversa(s.grupo, this.nomeDe, this.contexto()), i: 0, proxima: t + this.sorteio(1, 2.5) };
       } else if (s.fase === 'pausa') {
-        if (s.grupo.length > 1 && t > s.falaEm) {
-          this.falar(id, PAPO[Math.floor(Math.random() * PAPO.length)]);
-          s.falaEm = t + this.sorteio(5, 11);
+        const c = s.conversa;
+        if (c && t > c.proxima) {
+          const fala = c.falas[c.i];
+          if (!fala) {
+            // acabou o assunto: um tempinho em silêncio e, se a pausa continuar, outro assunto
+            s.conversa = { falas: montarConversa(s.grupo.filter((m) => this.estado(m).fase === 'pausa'), this.nomeDe, this.contexto()), i: 0, proxima: t + this.sorteio(7, 13) };
+          } else if (this.estado(fala.id).fase === 'pausa') {
+            this.falar(fala.id, fala.texto);
+            c.i++;
+            c.proxima = t + 2.6 + fala.texto.length * 0.035; // tempo de ler antes da resposta
+          } else {
+            c.proxima = t + 1; // quem vai responder ainda está chegando
+          }
         }
         if (t > s.ate) {
           // café tomado: às vezes vão para a mesa alta continuar a conversa

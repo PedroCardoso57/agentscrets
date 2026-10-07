@@ -2,6 +2,7 @@
 // primeira (escopo, usuários, stack, integrações, regras de negócio). Ficam em
 // DADOS_DIR/clientes.json e vão junto nas instruções de toda ordem do cliente.
 
+import { gravarArquivo } from './gravar.js';
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -32,8 +33,7 @@ export function criarClientes({ dadosDir }) {
 
   async function gravar() {
     await mkdir(dadosDir, { recursive: true });
-    await writeFile(`${arquivo}.tmp`, JSON.stringify(clientes, null, 2));
-    await rename(`${arquivo}.tmp`, arquivo);
+    await gravarArquivo(arquivo, JSON.stringify(clientes, null, 2));
   }
 
   function listar() {

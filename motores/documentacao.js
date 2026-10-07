@@ -9,6 +9,7 @@
 //   DOCUMENTADOR=documentador   agente responsável (precisa estar no motores.json)
 //   DOC_INTERVALO_MIN=3         de quantos em quantos minutos atualiza, se houver novidades
 
+import { gravarArquivo } from './gravar.js';
 import { readFile, writeFile, rename, mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chamarIA } from './provedores.js';
@@ -63,8 +64,7 @@ export function criarDocumentacao({ dadosDir, equipe, rotulo, naFila, registrarS
   async function salvarEstado() {
     await mkdir(dadosDir, { recursive: true });
     const meta = Object.fromEntries([...docs].map(([id, d]) => [id, { atualizadoEm: d.atualizadoEm, por: d.por }]));
-    await writeFile(`${estadoArquivo}.tmp`, JSON.stringify({ docs: meta, eventos }));
-    await rename(`${estadoArquivo}.tmp`, estadoArquivo);
+    await gravarArquivo(estadoArquivo, JSON.stringify({ docs: meta, eventos }));
   }
 
   // Anota algo que aconteceu para entrar na próxima atualização do documento do projeto.
@@ -156,8 +156,7 @@ ${projetos.ficha(projeto) || '(sem ficha)'}`;
       const arquivo = arquivoDe(projeto);
       await mkdir(projeto === GERAL ? dadosDir : pasta, { recursive: true });
       await writeFile(`${arquivo}.anterior`, d.texto).catch(() => {}); // guarda a versão anterior
-      await writeFile(`${arquivo}.tmp`, novo);
-      await rename(`${arquivo}.tmp`, arquivo);
+      await gravarArquivo(arquivo, novo);
       Object.assign(d, { texto: novo, atualizadoEm: new Date().toISOString(), por: id });
       const entraram = new Set(lote);
       eventos = eventos.filter((e) => !entraram.has(e)); // só tira os que entraram nesta rodada
