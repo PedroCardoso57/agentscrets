@@ -306,7 +306,9 @@ No ícone de pulso da barra lateral (ou em **monitor**, na aba Equipe). O botão
 2. manda um "ok" bem curto para cada modelo de conversa (poucos tokens por modelo; modelos de imagem, voz e embeddings ficam de fora; APIs compatíveis com centenas de modelos testam os da equipe e mais 20);
 3. mostra quais responderam e em quanto tempo e, para quem falhou, o **motivo real** (a mensagem do provedor, ex.: "Your credit balance is too low…", "model not found", "API key not valid"), com o erro completo para abrir.
 
-Os modelos usados pela equipe aparecem marcados (e quem os usa como reserva), e o resultado também atualiza o monitor automático. Dá para filtrar: todas, só as da equipe, só com problema.
+Os modelos usados pela equipe aparecem marcados (e quem os usa como reserva), e o resultado também atualiza o monitor automático.
+
+**Escolher só IAs que funcionam:** em ⚙ Equipe, cada agente ganha o atalho **⚡ Escolher uma IA que está funcionando**, que lista só os modelos que responderam no último teste (com o tempo), e escolher um já preenche IA, modelo e, nas APIs compatíveis, endereço e chave. No **Ver todos**, a opção "Mostrar só as que funcionaram" (ligada) esconde os modelos que falharam; desligada, eles aparecem com 🔴 e o motivo. Embaixo do modelo aparece se ele funcionou ou falhou no último teste, e a IA reserva e a lista de agentes marcam com 🔴 quem está fora. Dá para filtrar: todas, só as da equipe, só com problema.
 
 ### IA reserva (erro 429, limite de uso)
 As IAs gratuitas têm limite por minuto e por dia. Quando a IA de um agente responde "429 / quota exceeded":

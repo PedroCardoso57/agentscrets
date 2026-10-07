@@ -714,3 +714,13 @@ body.modo-lista #reabrir-painel { display: none; }
 #lista-ordens .cancelar-tarefa { margin-left: auto; flex: none; font: inherit; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 6px; cursor: pointer; color: var(--suave); background: none; border: 1px solid transparent; }
 #lista-ordens .cancelar-tarefa:hover { color: #ffb4b9; border-color: #ff4d5755; }
 #lista-ordens .tarefa-plano.cancelada > summary .txt { text-decoration: line-through; }
+
+/* ⚙ Equipe: escolher só IAs que funcionam */
+.cfg-form .bloco-atalho-ia { display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 10px; background: #3fb27f12; border: 1px solid #3fb27f40; }
+.cfg-form .atalho-ia { font-weight: 600; }
+.cfg-form .atalho-vazio { margin: 0; font-size: 12px; }
+.cfg-form .situacao-modelo { font-size: 12px; margin-top: -4px; }
+.cfg-form .situacao-modelo:empty { display: none; }
+.cfg-form .situacao-modelo.ok { color: var(--trabalhando); }
+.cfg-form .situacao-modelo.falha { color: #ff8a92; }
+.cfg-form .filtro-funcionando { font-size: 12px; }

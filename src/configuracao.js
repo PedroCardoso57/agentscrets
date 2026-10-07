@@ -59,6 +59,11 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
 
   let estado = null;
   let selecionado = null;
+  let teste = null;      // último "Testar todas" do Monitor de IAs (o que respondeu e o que falhou)
+  let iasAgentes = {};   // situação da IA de cada agente (monitor automático)
+  // resultado do teste de um modelo: provedor | endereço (APIs compatíveis) | modelo
+  const chaveTeste = (provedor, modelo, baseUrl) => `${provedor}|${provedor === 'compativel' ? String(baseUrl || '').replace(/\/$/, '') : ''}|${modelo}`;
+  const resultadosTeste = () => new Map((teste?.resultados || []).map((r) => [chaveTeste(r.provedor, r.modelo, r.baseUrl), r]));
 
   async function abrirEquipe(id) {
     if (!servidorAtivo()) return alert('A configuração da equipe precisa do servidor (node servidor.js ou o VPS).');
@@ -70,6 +75,11 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       corpoEquipe().replaceChildren(el('p', { class: 'erro' }, `Não consegui carregar: ${erro.message}`));
       return;
     }
+    // o que está funcionando (para filtrar as escolhas); sem isso, a tela funciona como antes
+    [teste, iasAgentes] = await Promise.all([
+      fetch('api/ias/teste').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('api/ias').then((r) => (r.ok ? r.json() : null)).then((d) => d?.agentes || {}).catch(() => ({})),
+    ]);
     selecionado = id || selecionado || agentesVisiveis()[0];
     desenharEquipe();
   }
@@ -82,7 +92,7 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       const c = estado.agentes[id];
       return el('li', { class: id === selecionado ? 'ativo' : '', onclick: () => { selecionado = id; desenharEquipe(); } },
         el('b', {}, nomeDe(id)),
-        el('small', {}, c ? estado.rotulos[id] : 'sem IA (só motor externo)'));
+        el('small', {}, c ? `${iasAgentes[id] && !['ok', 'verificando', 'externo'].includes(iasAgentes[id].estado) ? `🔴 ${iasAgentes[id].descricao.replace(/^\S+\s/, '')} · ` : ''}${estado.rotulos[id]}` : 'sem IA (só motor externo)'));
     }));
     const rodape = estado.editadoPelaTela
       ? el('p', { class: 'suave' }, 'A equipe está usando a configuração salva pela tela. ',
@@ -110,24 +120,55 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
     // IA reserva: empresta a IA de outro agente quando a deste der limite de uso (erro 429)
     const reserva = el('select', { name: 'reserva' }, el('option', { value: '' }, 'Nenhuma'),
       Object.entries(estado.agentes).filter(([outro, o]) => outro !== id && o.provedor !== 'webhook')
-        .map(([outro]) => el('option', { value: outro, selected: atual.reserva === outro }, `IA do ${nomeDe(outro)} (${estado.rotulos[outro]})`)));
+        .map(([outro]) => {
+          const fora = iasAgentes[outro] && !['ok', 'verificando', 'externo'].includes(iasAgentes[outro].estado);
+          return el('option', { value: outro, selected: atual.reserva === outro }, `${fora ? '🔴 ' : ''}IA do ${nomeDe(outro)} (${estado.rotulos[outro]})${fora ? ` · ${iasAgentes[outro].descricao.replace(/^\S+\s/, '')}` : ''}`);
+        }));
     const funcao = el('input', { name: 'funcao', value: atual.funcao || '', placeholder: 'ex.: Cria APIs, banco de dados e integrações' });
     const instrucoes = el('textarea', { name: 'instrucoes', rows: 7, placeholder: 'Você é o … da software house. …' }, atual.instrucoes || '');
     const statusChave = el('p', { class: 'chave' });
     // lista completa de modelos, buscada no provedor com a chave do servidor
-    const listaModelos = el('select', { class: 'lista-modelos', hidden: true, onchange: () => { if (listaModelos.value) modelo.value = listaModelos.value; } });
+    const listaModelos = el('select', { class: 'lista-modelos', hidden: true, onchange: () => { if (listaModelos.value) { modelo.value = listaModelos.value; mostrarSituacaoModelo(); } } });
+    const soFuncionando = el('input', { type: 'checkbox', checked: true, onchange: () => desenharLista() });
+    const linhaFiltro = el('label', { class: 'linha filtro-funcionando', hidden: true }, soFuncionando, el('span', {}, 'Mostrar só as que funcionaram no último teste do Monitor de IAs'));
+    let ultimosModelos = [];
+    // situação de um modelo no último teste
+    const situacaoModelo = (m) => resultadosTeste().get(chaveTeste(provedor.value, m, baseUrl.value));
+    function desenharLista() {
+      const testados = ultimosModelos.filter((m) => situacaoModelo(m));
+      const filtrar = soFuncionando.checked && testados.length > 0;
+      const lista = filtrar ? ultimosModelos.filter((m) => situacaoModelo(m)?.estado === 'ok') : ultimosModelos;
+      const rotulo = (m) => {
+        const r = situacaoModelo(m);
+        if (!r) return `${m}${testados.length ? ' (não testado)' : ''}`;
+        return r.estado === 'ok' ? `🟢 ${m} · ${(r.ms / 1000).toFixed(1)} s` : `🔴 ${m} · ${teste.estados?.[r.estado]?.replace(/^\S+\s/, '') || r.estado}`;
+      };
+      listaModelos.replaceChildren(
+        el('option', { value: '' }, filtrar ? `${lista.length} de ${ultimosModelos.length} modelos funcionando — escolha um` : `${ultimosModelos.length} modelos disponíveis — escolha um`),
+        ...lista.map((m) => el('option', { value: m, selected: m === modelo.value }, rotulo(m))),
+      );
+      linhaFiltro.hidden = !testados.length;
+      datalist.replaceChildren(...lista.map((m) => el('option', { value: m })));
+    }
+    // aviso embaixo do modelo: funcionou ou falhou no último teste (e o motivo)
+    const situacaoAtual = el('small', { class: 'situacao-modelo' });
+    function mostrarSituacaoModelo() {
+      const r = provedor.value !== 'webhook' && modelo.value ? situacaoModelo(modelo.value.trim()) : null;
+      situacaoAtual.className = `situacao-modelo ${r ? (r.estado === 'ok' ? 'ok' : 'falha') : ''}`;
+      situacaoAtual.textContent = !r ? '' : r.estado === 'ok'
+        ? `🟢 Funcionou no último teste (${(r.ms / 1000).toFixed(1)} s)`
+        : `🔴 Falhou no último teste: ${r.mensagem || r.estado}`;
+    }
+    modelo.addEventListener('input', mostrarSituacaoModelo);
     const botaoModelos = el('button', { type: 'button', class: 'secundario', onclick: () => carregarModelos() }, 'Ver todos');
     async function carregarModelos() {
       botaoModelos.disabled = true;
       botaoModelos.textContent = 'Buscando…';
       try {
         const { modelos } = await api('api/motores/modelos', dados());
-        listaModelos.replaceChildren(
-          el('option', { value: '' }, `${modelos.length} modelos disponíveis — escolha um`),
-          ...modelos.map((m) => el('option', { value: m, selected: m === modelo.value }, m)),
-        );
+        ultimosModelos = modelos;
+        desenharLista();
         listaModelos.hidden = false;
-        datalist.replaceChildren(...modelos.map((m) => el('option', { value: m })));
       } catch (erro) {
         resultado.className = 'resultado falha';
         resultado.textContent = `✗ Não consegui buscar os modelos: ${erro.message}`;
@@ -137,6 +178,29 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       }
     }
     const resultado = el('div', { class: 'resultado' });
+
+    // atalho: só as IAs que responderam no último "Testar todas" do Monitor de IAs
+    const funcionando = (teste?.resultados || []).filter((r) => r.estado === 'ok');
+    const grupos2 = [...new Set(funcionando.map((r) => r.nomeProvedor))];
+    const atalhoIa = funcionando.length
+      ? el('select', {
+        class: 'atalho-ia',
+        onchange: () => {
+          const r = funcionando[Number(atalhoIa.value)];
+          if (!r) return;
+          provedor.value = r.provedor;
+          modelo.value = r.modelo;
+          if (r.provedor === 'compativel') { baseUrl.value = r.baseUrl || ''; chaveEnv.value = r.chaveEnv || ''; }
+          atualizar();
+          atalhoIa.value = '';
+        },
+      }, el('option', { value: '' }, `⚡ Escolher uma IA que está funcionando (${funcionando.length})`),
+      ...grupos2.map((g) => el('optgroup', { label: g }, ...funcionando.map((r, i) => [r, i]).filter(([r]) => r.nomeProvedor === g)
+        .map(([r, i]) => el('option', { value: i }, `${r.modelo} · ${(r.ms / 1000).toFixed(1)} s${r.usadoPor.length ? ` · usada por ${r.usadoPor.map(nomeDe).join(', ')}` : ''}`)))))
+      : el('p', { class: 'suave atalho-vazio' }, teste?.inicio
+        ? 'Nenhuma IA respondeu no último teste do Monitor de IAs. Confira as chaves no .env e teste de novo.'
+        : 'Dica: rode "Testar todas agora" no Monitor de IAs (ícone de pulso na barra lateral) para escolher só entre as IAs que estão funcionando.');
+    const testadoEm = teste?.fim ? el('small', { class: 'suave' }, `Último teste do Monitor de IAs: ${new Date(teste.fim).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`) : null;
 
     const presets = el('div', { class: 'presets' }, 'Atalhos: ', Object.keys(PRESETS).map((nome) => el('button', {
       type: 'button', class: 'link', onclick: () => {
@@ -164,6 +228,8 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
       linhaInternet.hidden = !['anthropic', 'gemini'].includes(p);
       if (linhaInternet.hidden) internet.checked = false;
       datalist.replaceChildren(...(SUGESTOES[p] || []).map((m) => el('option', { value: m })));
+      linhaFiltro.hidden = true;
+      mostrarSituacaoModelo();
       const nomeChave = p === 'compativel' ? chaveEnv.value.trim() : CHAVE_DO_PROVEDOR[p];
       if (!nomeChave) { statusChave.textContent = p === 'webhook' ? '' : 'Sem chave de API.'; statusChave.className = 'chave'; return; }
       if (!(nomeChave in estado.chaves)) { statusChave.textContent = `Use "Testar" para conferir se ${nomeChave} está no .env do servidor.`; statusChave.className = 'chave'; return; }
@@ -224,8 +290,9 @@ export function criarConfiguracao({ agentesVisiveis, nomeDe, servidorAtivo, aoRe
 
     f.append(
       el('h3', {}, nomeDe(id)),
+      el('div', { class: 'bloco-atalho-ia' }, atalhoIa, testadoEm),
       campo('IA', provedor),
-      grupos.modelo, listaModelos, grupos.compat, grupos.webhook, statusChave, grupos.esforco,
+      grupos.modelo, situacaoAtual, linhaFiltro, listaModelos, grupos.compat, grupos.webhook, statusChave, grupos.esforco,
       campo('IA reserva (quando esta der limite de uso)', reserva, 'Se a IA deste agente der erro 429, ele espera e tenta de novo; se continuar, usa a IA escolhida aqui. Prefira outro provedor (ex.: Groq ou OpenRouter se este é Gemini).'),
       campo('Função (o Orquestrador lê isto para decidir a quem passar cada tarefa)', funcao),
       campo('Instruções (o papel e o jeito de trabalhar deste agente)', instrucoes),
