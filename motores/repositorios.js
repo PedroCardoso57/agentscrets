@@ -631,7 +631,8 @@ ${diff}`,
         if (erro.status !== 403) throw erro;
         semPermissaoChecks = Date.now();
         console.warn('[github] o token não tem a permissão "Checks": usando as execuções do GitHub Actions');
-        if (!avisouChecks) avisouChecks = true, avisar?.('⚠️ O token do GitHub não tem a permissão "Checks: Read-only". O escritório vai ler os testes pelas execuções do GitHub Actions, mas o ideal é adicionar essa permissão (github.com/settings/personal-access-tokens → Edit → Add permissions → Checks).');
+        // não é erro: o token não tem "Checks" (nem todo token oferece essa permissão); os testes vêm do Actions
+        if (!avisouChecks) avisouChecks = true, console.log('[github] lendo os testes pelas execuções do GitHub Actions (permissão "Actions: Read-only")');
       }
     }
     const { workflow_runs: runs = [] } = await gh('GET', `${base}/actions/runs?head_sha=${sha}&per_page=20`);
@@ -675,7 +676,7 @@ ${diff}`,
           // não deu para ler o resultado dos testes: não fica "testando" para sempre
           if (!pr.avisouLeitura) {
             pr.avisouLeitura = true;
-            avisar?.(`⚠️ Não consigo ler o resultado dos testes do ${pr.url}: ${erro.message.slice(0, 160)}. No token do GitHub, adicione as permissões "Checks: Read-only" e "Actions: Read-only". ${minutos < CI_LIMITE_MIN ? `Se não resolver em ${CI_LIMITE_MIN} min, o PR segue para a revisão sem o resultado dos testes.` : 'O PR segue para a revisão sem o resultado dos testes.'}`);
+            avisar?.(`⚠️ Não consigo ler o resultado dos testes do ${pr.url}: ${erro.message.slice(0, 160)}. Confira se o token do GitHub tem a permissão "Actions: Read-only". ${minutos < CI_LIMITE_MIN ? `Se não resolver em ${CI_LIMITE_MIN} min, o PR segue para a revisão sem o resultado dos testes.` : 'O PR segue para a revisão sem o resultado dos testes.'}`);
             await gravar();
           }
           if (minutos >= CI_LIMITE_MIN) { pr.aguardando = null; await revisar(pr, repo); }
