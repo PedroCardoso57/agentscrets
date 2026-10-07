@@ -16,6 +16,7 @@ import { Efeitos } from './efeitos.js';
 import { Vida } from './vida.js';
 import { criarRegistroErros } from './erros.js';
 import { retratosDa } from './retratos.js';
+import { criarMonitorIas } from './monitor-ias.js';
 
 // ---------- renderização ----------
 
@@ -239,11 +240,12 @@ function desenharIas() {
   resumoIas.hidden = !ias.length;
   const problemas = ias.filter((ia) => !['ok', 'verificando', 'externo'].includes(ia.estado));
   resumoIas.classList.toggle('alerta', problemas.length > 0);
-  resumoIas.innerHTML = '<div class="topo-ias"><b></b><button type="button">verificar agora</button></div><ul></ul>';
+  resumoIas.innerHTML = '<div class="topo-ias"><b></b><button type="button" class="abrir-monitor">monitor</button><button type="button" class="verificar">verificar agora</button></div><ul></ul>';
+  resumoIas.querySelector('.abrir-monitor').onclick = () => monitorIas.abrir();
   resumoIas.querySelector('b').textContent = problemas.length
     ? `IAs: ${problemas.length} com problema · ${ias.length - problemas.length} ok`
     : `IAs: todas funcionando (${ias.filter((ia) => ia.estado === 'ok').length})`;
-  const botao = resumoIas.querySelector('button');
+  const botao = resumoIas.querySelector('.verificar');
   botao.onclick = async () => { botao.disabled = true; botao.textContent = 'verificando…'; await carregarIas(true); };
   const ul = resumoIas.querySelector('ul');
   for (const ia of [...problemas, ...ias.filter((x) => !problemas.includes(x))]) {
@@ -1053,6 +1055,8 @@ registroErros = criarRegistroErros({
   servidorAtivo: () => integracao.servidorAtivo(), aoMudar: () => atualizarHoje(),
 });
 document.getElementById('abrir-erros').addEventListener('click', () => registroErros.abrir());
+const monitorIas = criarMonitorIas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, aoTerminar: () => carregarIas() });
+document.getElementById('abrir-monitor-ias').addEventListener('click', () => monitorIas.abrir());
 
 janelaDoc = criarJanelaDocumentacao({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe });
 criarJanelaEntregas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, pedirAjuste: (...a) => integracao.pedirAjuste(...a) });

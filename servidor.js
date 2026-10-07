@@ -43,6 +43,7 @@ import { criarSupervisor } from './motores/supervisor.js';
 import { criarAutopiloto } from './motores/autopiloto.js';
 import { criarRepositorios } from './motores/repositorios.js';
 import { criarSaude } from './motores/saude.js';
+import { criarTesteIas } from './motores/teste-ias.js';
 
 const RAIZ = fileURLToPath(new URL('.', import.meta.url));
 const PORTA = Number(process.env.PORTA || process.env.PORT || 8787);
@@ -388,6 +389,8 @@ const saude = criarSaude({
   aoVoltar: (agentes) => { for (const id of agentes) supervisor.agenteMudou(id); }, // IA voltou: retoma o que estava parado
   mudou: () => transmitirSemSalvar('ias', saude.porAgente()),
 });
+// Painel "Monitor de IAs": testa todas as IAs que as chaves enxergam
+const testeIas = criarTesteIas({ equipe: () => motores.equipe(), aoResultado: (conf, erro) => saude.registrarUso(conf, erro) });
 const autopiloto = criarAutopiloto({
   dadosDir: DADOS_DIR,
   ordens,
@@ -597,6 +600,8 @@ async function atender(req, res) {
     try { return enviarJSON(res, 200, { modelos: await motores.modelos(dados) }); } catch (erro) { return enviarJSON(res, 400, { erro: erro.message }); }
   }
   if (rota === '/api/ias' && req.method === 'GET') return enviarJSON(res, 200, { ias: saude.listar(), agentes: saude.porAgente() });
+  if (rota === '/api/ias/teste' && req.method === 'GET') return enviarJSON(res, 200, testeIas.ver());
+  if (rota === '/api/ias/teste' && req.method === 'POST') return enviarJSON(res, 200, await testeIas.rodar());
   if (rota === '/api/ias/verificar' && req.method === 'POST') return enviarJSON(res, 200, { ias: await saude.verificar(), agentes: saude.porAgente() });
   if (rota === '/api/motores/restaurar' && req.method === 'POST') { await motores.restaurar(); return enviarJSON(res, 200, motores.listar()); }
 

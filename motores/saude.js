@@ -198,5 +198,5 @@ export function criarSaude({ equipe, avisar = () => {}, aoVoltar = () => {}, mud
     console.log(`[ias] monitor ligado: confere as IAs da equipe a cada ${Math.round(INTERVALO_MS / 60000)} min`);
   }
 
-  return { iniciar, verificar, listar, porAgente, bloqueada };
+  return { iniciar, verificar, listar, porAgente, bloqueada, registrarUso: aoResultado };
 }

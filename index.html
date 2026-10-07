@@ -41,6 +41,7 @@
     <button type="button" id="abrir-entregas" data-rotulo="Entregas"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></button>
     <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></button>
     <button type="button" id="abrir-relatorio" data-rotulo="Relatório"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg></button>
+    <button type="button" id="abrir-monitor-ias" data-rotulo="Monitor de IAs"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
     <button type="button" id="abrir-equipe" data-rotulo="Equipe e IAs"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
     <span class="espaco"></span>
     <button type="button" id="alternar-modo" data-rotulo="Modo lista (mais leve)"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path class="lista" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/><path class="predio" d="M3 21h18M5 21V5l7-3 7 3v16M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/></svg></button>
@@ -50,6 +51,7 @@
     <div class="abas" role="tablist">
       <button type="button" role="tab" class="aba ativa" data-aba="ordens" aria-selected="true">Ordens <span class="contador" data-contador="ordens"></span></button>
       <button type="button" role="tab" class="aba" data-aba="equipe" aria-selected="false">Equipe <span class="contador" data-contador="equipe"></span></button>
+      <button type="button" class="minimizar-painel" title="Minimizar o painel" aria-label="Minimizar o painel"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
     </div>
     <section class="conteudo-aba" data-conteudo="ordens">
       <ul id="lista-ordens"><li class="vazio">Nenhuma ordem ainda. Escreva na barra de baixo: o seu bonequinho leva a ordem até a mesa do agente.</li></ul>
@@ -59,6 +61,8 @@
       <p class="dica">Clique num agente (aqui ou na cena) para focar e mandar ordem para ele. Arraste para girar, role para dar zoom.</p>
     </section>
   </aside>
+
+  <button type="button" id="reabrir-painel" hidden title="Abrir o painel de ordens e equipe"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg><span>Ordens</span><b class="contador-reabrir"></b></button>
 
   <div id="avisos" aria-live="polite"></div>
 
@@ -75,6 +79,20 @@
 
   <dialog id="dlg-equipe" aria-labelledby="titulo-equipe">
     <header><h2 id="titulo-equipe">Equipe · qual IA cada agente usa</h2><button type="button" class="fechar" aria-label="Fechar">✕</button></header>
+    <div class="corpo"></div>
+  </dialog>
+
+  <dialog id="dlg-monitor-ias" aria-labelledby="titulo-monitor">
+    <header>
+      <h2 id="titulo-monitor">Monitor de IAs</h2>
+      <select name="mostrar" aria-label="Mostrar">
+        <option value="todas">Todas</option>
+        <option value="equipe">Só as da equipe</option>
+        <option value="problemas">Só com problema</option>
+      </select>
+      <button type="button" class="testar-todas">Testar todas agora</button>
+      <button type="button" class="fechar" aria-label="Fechar">✕</button>
+    </header>
     <div class="corpo"></div>
   </dialog>
 
