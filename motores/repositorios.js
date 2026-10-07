@@ -16,7 +16,7 @@
 //   novo já ganha um site no Netlify ligado a ele (previews por PR e produção).
 //
 // .env: GITHUB_TOKEN (fine-grained: Administration, Contents, Pull requests e
-// Workflows em Read and write; Actions, Commit statuses e Deployments em Read-only),
+// Workflows em Read and write; Actions, Checks, Commit statuses e Deployments em Read-only),
 // GITHUB_DONO (organização onde criar; padrão: a conta do token), GITHUB_PREFIXO
 // (prefixo do nome dos repositórios).
 
@@ -29,7 +29,12 @@ const NETLIFY_API = process.env.NETLIFY_API || 'https://api.netlify.com/api/v1';
 const MAX_ARQUIVOS = 80;
 const MAX_TAMANHO = 400_000;
 const MAX_CORRECOES = 3;
-const MAX_CONFLITOS = 3; // vezes que o escritório tenta resolver o conflito de um PR antes de chamar você
+const MAX_CONFLITOS = 3;
+// CI parado: depois desse tempo, as verificações que não terminaram não seguram mais o PR
+const CI_LIMITE_MIN = Number(process.env.GITHUB_CI_LIMITE_MIN) || 30;
+// conclusões que são problema do GitHub/da conta, não do código (não adianta pedir correção ao agente)
+const PROBLEMA_INFRA = ['action_required', 'stale', 'startup_failure', 'cancelled', 'timed_out'];
+const ehActions = (c) => !c.app?.slug || c.app.slug === 'github-actions'; // vezes que o escritório tenta resolver o conflito de um PR antes de chamar você
 const REENVIO_MIN = [2, 5, 10, 30, 60]; // espera entre os reenvios de uma entrega que não subiu (depois, de hora em hora)
 const REENVIO_LIMITE_MS = 48 * 3600 * 1000;
 const SEM_CI_MIN = 6; // sem nenhum check depois disso: o repositório não tem CI rodando
@@ -372,7 +377,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
         prs.push(pr);
         informar?.(`🔀 ${r.agente} abriu o PR #${pr.numero} (${arquivos.length} arquivo(s)): ${pr.url}`);
       }
-      Object.assign(pr, { sha, estado: 'testando', desde: new Date().toISOString(), ultimaOrdem: ordem.id });
+      Object.assign(pr, { sha, estado: 'testando', desde: new Date().toISOString(), ultimaOrdem: ordem.id, aguardando: null, avisouCiParado: false, avisouInfra: false });
       r.repo = { pr: pr.numero, url: pr.url, branch, arquivos: arquivos.map((a) => a.caminho), estado: 'testando' };
       await gravar();
       mudou(ordem);
@@ -421,7 +426,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       if (o.cliente !== pr.cliente) continue;
       const dele = o.respostas.filter((x) => x.repo?.pr === pr.numero && x.repo.branch === pr.branch);
       if (!dele.length) continue;
-      for (const r of dele) Object.assign(r.repo, { estado }, pr.preview ? { preview: pr.preview } : {});
+      for (const r of dele) Object.assign(r.repo, { estado, aguardando: pr.aguardando || null, desde: pr.desde || null }, pr.preview ? { preview: pr.preview } : {});
       mudou(o);
     }
   }
@@ -613,6 +618,33 @@ ${diff}`,
     await gravar();
   }
 
+  // Resultado dos testes de um commit. O normal é a lista de "checks" (permissão Checks);
+  // sem ela, usa as execuções do GitHub Actions (permissão Actions), no mesmo formato.
+  let semPermissaoChecks = 0; // quando faltou a permissão (tenta de novo a cada hora: você pode ter adicionado)
+  let avisouChecks = false;
+  async function verificacoes(repo, sha) {
+    const base = `/repos/${repo.dono}/${repo.nome}`;
+    if (Date.now() - semPermissaoChecks > 3600000) {
+      try {
+        return (await gh('GET', `${base}/commits/${sha}/check-runs`)).check_runs || [];
+      } catch (erro) {
+        if (erro.status !== 403) throw erro;
+        semPermissaoChecks = Date.now();
+        console.warn('[github] o token não tem a permissão "Checks": usando as execuções do GitHub Actions');
+        if (!avisouChecks) avisouChecks = true, avisar?.('⚠️ O token do GitHub não tem a permissão "Checks: Read-only". O escritório vai ler os testes pelas execuções do GitHub Actions, mas o ideal é adicionar essa permissão (github.com/settings/personal-access-tokens → Edit → Add permissions → Checks).');
+      }
+    }
+    const { workflow_runs: runs = [] } = await gh('GET', `${base}/actions/runs?head_sha=${sha}&per_page=20`);
+    const lista = [];
+    for (const run of runs) {
+      // jobs de cada execução (o log de falha é por job)
+      const { jobs = [] } = await gh('GET', `${base}/actions/runs/${run.id}/jobs?per_page=20`).catch(() => ({ jobs: [] }));
+      if (jobs.length) for (const j of jobs) lista.push({ id: j.id, name: j.name, status: j.status, conclusion: j.conclusion, app: { slug: 'github-actions' }, details_url: j.html_url });
+      else lista.push({ id: run.id, name: run.name, status: run.status, conclusion: run.conclusion, app: { slug: 'github-actions' }, details_url: run.html_url });
+    }
+    return lista;
+  }
+
   // Acompanha os PRs abertos pelo escritório: CI, revisão, preview e produção.
   async function conferir() {
     await reenviarPendentes().catch((erro) => console.error(`[github] reenvio: ${erro.message}`));
@@ -633,17 +665,51 @@ ${diff}`,
         // PRs que ficaram em "conflito" antes desta versão: o escritório tenta resolver
         if (pr.estado === 'conflito' && !pr.conflitos) { await resolverConflito(pr, repo); continue; }
         if (pr.estado !== 'testando') continue;
-        if (await emConflito(pr, repo)) { await resolverConflito(pr, repo); continue; }
+        if (await emConflito(pr, repo).catch(() => false)) { await resolverConflito(pr, repo); continue; } // se a consulta falhar, segue o CI normalmente
         await procurarPreview(pr, repo);
-        const { check_runs: checks = [] } = await gh('GET', `/repos/${repo.dono}/${repo.nome}/commits/${pr.sha}/check-runs`);
         const minutos = (Date.now() - Date.parse(pr.desde)) / 60000;
+        let checks;
+        try {
+          checks = await verificacoes(repo, pr.sha);
+        } catch (erro) {
+          // não deu para ler o resultado dos testes: não fica "testando" para sempre
+          if (!pr.avisouLeitura) {
+            pr.avisouLeitura = true;
+            avisar?.(`⚠️ Não consigo ler o resultado dos testes do ${pr.url}: ${erro.message.slice(0, 160)}. No token do GitHub, adicione as permissões "Checks: Read-only" e "Actions: Read-only". ${minutos < CI_LIMITE_MIN ? `Se não resolver em ${CI_LIMITE_MIN} min, o PR segue para a revisão sem o resultado dos testes.` : 'O PR segue para a revisão sem o resultado dos testes.'}`);
+            await gravar();
+          }
+          if (minutos >= CI_LIMITE_MIN) { pr.aguardando = null; await revisar(pr, repo); }
+          continue;
+        }
         if (!checks.length) {
           if (minutos > SEM_CI_MIN) await revisar(pr, repo); // sem CI no repositório: segue para a revisão
           continue;
         }
-        if (checks.some((c) => c.status !== 'completed')) continue;
-        const falhas = checks.filter((c) => !['success', 'skipped', 'neutral'].includes(c.conclusion));
-        if (!falhas.length) { await procurarPreview(pr, repo); await revisar(pr, repo); continue; }
+        // o que ainda não terminou aparece no cartão ("esperando: …")
+        const pendentes = checks.filter((c) => c.status !== 'completed');
+        const nomes = pendentes.map((c) => c.name).join(', ') || null;
+        if (nomes !== (pr.aguardando || null)) { pr.aguardando = nomes; marcar(pr, pr.estado); await gravar(); }
+        if (pendentes.length) {
+          if (minutos < CI_LIMITE_MIN) continue;
+          // passou do limite: avisa uma vez e segue só com o que terminou
+          const actionsPresos = pendentes.filter(ehActions);
+          if (!pr.avisouCiParado) {
+            pr.avisouCiParado = true;
+            avisar?.(`⏳ O CI do ${pr.url} está parado há ${Math.round(minutos)} min esperando: ${nomes}. ${actionsPresos.length
+              ? 'Os testes do GitHub Actions não terminaram (veja a aba Actions do repositório: fila parada, aprovação pendente ou minutos do plano esgotados).'
+              : 'São verificações de fora do GitHub (ex.: Netlify), que não decidem o merge.'} O PR segue para a revisão sem esperar mais.`);
+          }
+          if (actionsPresos.length && process.env.GITHUB_CI_TRAVADO === 'esperar') continue;
+        }
+        const terminados = checks.filter((c) => c.status === 'completed');
+        // problema do GitHub/da conta (aprovação pendente, run cancelado…): avisa, mas não culpa o código
+        const infra = terminados.filter((c) => PROBLEMA_INFRA.includes(c.conclusion));
+        if (infra.length && !pr.avisouInfra) {
+          pr.avisouInfra = true;
+          avisar?.(`⚠️ No ${pr.url}, ${infra.map((c) => `"${c.name}" terminou como ${c.conclusion}`).join(', ')}: isso é do GitHub/da conta, não do código. Seguindo sem essa verificação.`);
+        }
+        const falhas = terminados.filter((c) => !['success', 'skipped', 'neutral', ...PROBLEMA_INFRA].includes(c.conclusion));
+        if (!falhas.length) { pr.aguardando = null; await procurarPreview(pr, repo); await revisar(pr, repo); continue; }
         // o fim do log de cada falha (Actions) ou o resumo do check (Vercel, Netlify…)
         const logs = [];
         for (const c of falhas.slice(0, 2)) {

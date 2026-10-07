@@ -627,7 +627,11 @@ function blocoResposta(o, r, indice) {
     linha.className = 'pr-github';
     {
       const a = Object.assign(document.createElement('a'), { href: r.repo.url, target: '_blank', rel: 'noopener', textContent: `🔀 PR #${r.repo.pr}` });
-      linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
+      // testando: o que o CI ainda está esperando e há quanto tempo
+      const ha = r.repo.desde ? Math.round((Date.now() - Date.parse(r.repo.desde)) / 60000) : null;
+      const espera = r.repo.estado === 'testando' && (r.repo.aguardando || ha != null)
+        ? `${r.repo.aguardando ? ` · esperando: ${r.repo.aguardando}` : ''}${ha != null ? ` · há ${ha < 60 ? `${ha} min` : `${Math.floor(ha / 60)} h`}` : ''}` : '';
+      linha.append(a, ` · ${ESTADO_PR[r.repo.estado] || r.repo.estado || ''}${espera} · ${r.repo.arquivos?.length || 0} arquivo(s)`);
       if (r.repo.preview) linha.append(' · ', Object.assign(document.createElement('a'), { href: r.repo.preview, target: '_blank', rel: 'noopener', textContent: '🔎 ver preview' }));
     }
     resp.appendChild(linha);
