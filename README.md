@@ -133,7 +133,7 @@ Use a barra de baixo da tela:
 - Cada ordem sua é um cartão. As tarefas que o Tech Lead passou ao time ficam **dentro** do cartão (com barra de progresso), e a entrega final aparece no topo dele.
 - A situação é contada do seu ponto de vista: ⏳ aguardando · ⚙️ em andamento · 🔁 tentando de novo · ⚠️ precisa de você · ✅ concluída. Uma ordem com plano só fica concluída quando todas as tarefas e a entrega final terminam.
 - **NOVA** marca o cartão com resposta que você ainda não abriu (clique no cartão para marcar como vista). O número na aba Ordens soma as novas e as que precisam de você.
-- Filtros no topo: Novas · Em andamento · Precisa de você · Concluídas · Todas. Cartões concluídos e já vistos ficam recolhidos.
+- Filtros no topo: Novas · Andamento · Atenção (o que precisa de você) · Concluídas · Todas. Cartões concluídos e já vistos ficam recolhidos.
 
 **Registro de erros:** as mensagens de erro (das IAs, do GitHub e os avisos do supervisor) não aparecem mais no meio das respostas nem como aviso na tela. Ficam num lugar só: clique em **erros** na faixa Hoje ou em **🗒 registro de erros** no painel de ordens. No cartão aparece só a situação (ex.: "tenta de novo às 17:43") com um link "ver erro".
 
@@ -236,10 +236,11 @@ A sala tem copa (balcão, cafeteira com vapor, pia, geladeira, bebedouro e mesa 
 
 - **Barra lateral** com os menus (no celular vira a barra de baixo); passe o mouse para ver o nome de cada um. ⌂ volta para a visão do escritório todo.
 - **Faixa "Hoje"** no topo: entregas do dia, quem está trabalhando, erros e a próxima rotina.
-- **Painel com abas** Ordens | Equipe; cada ordem é um cartão na cor do agente, com horário, e respostas longas ficam recolhidas ("ver mais").
-- **Avisos** quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
-- **Escritório vivo**: dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no QA e no Requisitos, gorro no Back-end, boné no Front-end, capacete no DevOps, crachá no Tech Lead, lápis no Documentador), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo QA quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
-- **Modo lista** (☰ na barra): esconde o 3D e mostra ordens e equipe em tela cheia. No celular ele já começa assim; a escolha fica lembrada no aparelho.
+- **Painel com abas** Ordens | Equipe, **redimensionável**: arraste a borda esquerda para alargar (duplo clique volta ao padrão). Cada ordem é um cartão com o avatar do agente; respostas com código mostram só a explicação e os arquivos como etiquetas ("ver código" abre tudo).
+- **Avisos** no canto de baixo, sem cobrir a cena, quando chega uma entrega, com **Ver** e **↩ Ajustar** ali mesmo; também avisa ordens que chegam pelo Telegram e rotinas que disparam.
+- **Etiquetas na cena** sem se sobrepor (quem está atrás sobe um pouco). De longe aparecem só os nomes e as falas; a tarefa de cada um aparece quando você aproxima a câmera. Os balões mostram só a primeira frase.
+- **Escritório vivo**: piso de carvalho, tapete de lã, quadros e prateleira com plantas na parede da marca, rack de servidor piscando no DevOps, celular no suporte no Front-end, post-its no Requisitos, manuais e caderno no Documentador, dia e noite pelo horário de Brasília (as luminárias acendem à noite; teste com `?hora=22` na URL), relógio de parede, mural com os seus clientes, estante, acessórios por função (fone no Designer, óculos no QA e no Requisitos, gorro no Back-end, boné no Front-end, capacete no DevOps, crachá no Tech Lead, lápis no Documentador), anel girando sobre quem está trabalhando, a folha da entrega voando até a sua mesa (passando pelo QA quando ele revisou), aviãozinho de papel nas ordens do Telegram e despertador nas rotinas.
+- **Modo lista** (ícone de lista na barra): esconde o 3D e mostra ordens e equipe em tela cheia. No celular ele já começa assim; a escolha fica lembrada no aparelho.
 - **Sua marca**: no `.env`, `MARCA_NOME`, `MARCA_SUBTITULO` e `MARCA_COR` (hex) mudam o topo, a cor de destaque e a placa na parede. Fonte Montserrat.
 
 ## Clientes, ajustes, Revisor, internet e rotinas

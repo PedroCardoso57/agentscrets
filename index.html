@@ -26,24 +26,24 @@
       <h1><span class="nome-marca">agentscrets</span><small class="sub-marca">escritório de agentes de IA</small></h1>
     </div>
     <div id="hoje" aria-label="Resumo de hoje">
-      <div class="kpi" title="Entregas feitas hoje"><b data-kpi="entregas">0</b><span>entregas hoje</span></div>
-      <div class="kpi" title="Agentes trabalhando agora"><b data-kpi="trabalhando">0</b><span>trabalhando</span></div>
-      <button type="button" class="kpi" id="abrir-erros" title="Erros de hoje · clique para abrir o registro de erros"><b data-kpi="erros">0</b><span>erros</span></button>
-      <div class="kpi largo" title="Próxima rotina agendada"><b data-kpi="rotina">—</b><span data-kpi="rotina-nome">próxima rotina</span></div>
+      <div class="kpi" title="Entregas feitas hoje"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/></svg><b data-kpi="entregas">0</b><span>entregas hoje</span></div>
+      <div class="kpi" title="Agentes trabalhando agora"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><b data-kpi="trabalhando">0</b><span>trabalhando</span></div>
+      <button type="button" class="kpi" id="abrir-erros" title="Erros de hoje · clique para abrir o registro de erros"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><b data-kpi="erros">0</b><span>erros</span></button>
+      <div class="kpi largo" title="Próxima rotina agendada"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><b data-kpi="rotina">—</b><span data-kpi="rotina-nome">próxima rotina</span></div>
     </div>
     <div id="conexao" title="Origem dos status">● demo</div>
   </header>
 
   <nav id="barra" aria-label="Menu">
-    <button type="button" id="visao-geral" data-rotulo="Ver o escritório todo"><span aria-hidden="true">⌂</span></button>
-    <button type="button" id="abrir-clientes" data-rotulo="Clientes e projetos"><span aria-hidden="true">📇</span></button>
-    <button type="button" id="abrir-rotinas" data-rotulo="Rotinas"><span aria-hidden="true">🗓</span></button>
-    <button type="button" id="abrir-entregas" data-rotulo="Entregas"><span aria-hidden="true">📦</span></button>
-    <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><span aria-hidden="true">📄</span></button>
-    <button type="button" id="abrir-relatorio" data-rotulo="Relatório"><span aria-hidden="true">📊</span></button>
-    <button type="button" id="abrir-equipe" data-rotulo="Equipe e IAs"><span aria-hidden="true">⚙</span></button>
+    <button type="button" id="visao-geral" data-rotulo="Ver o escritório todo"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
+    <button type="button" id="abrir-clientes" data-rotulo="Clientes e projetos"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></button>
+    <button type="button" id="abrir-rotinas" data-rotulo="Rotinas"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v3l2 1"/></svg></button>
+    <button type="button" id="abrir-entregas" data-rotulo="Entregas"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></button>
+    <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></button>
+    <button type="button" id="abrir-relatorio" data-rotulo="Relatório"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg></button>
+    <button type="button" id="abrir-equipe" data-rotulo="Equipe e IAs"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
     <span class="espaco"></span>
-    <button type="button" id="alternar-modo" data-rotulo="Modo lista (mais leve)"><span aria-hidden="true">☰</span></button>
+    <button type="button" id="alternar-modo" data-rotulo="Modo lista (mais leve)"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path class="lista" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/><path class="predio" d="M3 21h18M5 21V5l7-3 7 3v16M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/></svg></button>
   </nav>
 
   <aside id="painel">

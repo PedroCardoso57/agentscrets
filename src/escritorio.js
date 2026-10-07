@@ -60,7 +60,7 @@ const AMBIENTE = {
   marca: { nome: 'agentscrets', cor: '#e11d2a' },
   clientes: [],
   logo: null, mural: null, relogio: null,
-  vidros: [], pendentes: [],
+  vidros: [], pendentes: [], leds: [],
 };
 const FONTE = 'Montserrat, system-ui, sans-serif';
 
@@ -160,8 +160,13 @@ export function definirPainelTV(dados) {
   pintarTV();
 }
 
-// vapor subindo da cafeteira
+// vapor subindo da cafeteira e LEDs do servidor do DevOps
 export function animarAmbiente(dt, t) {
+  for (const led of AMBIENTE.leds) {
+    if (!led.parent) continue;
+    const ligado = Math.sin(t * led.userData.vel + led.userData.fase) > led.userData.limiar;
+    led.material.emissiveIntensity = ligado ? 2.2 : 0.15;
+  }
   const v = AMBIENTE.vapor;
   if (!v) return;
   for (const bolha of v.children) {
@@ -220,8 +225,17 @@ const COR_DIA = new THREE.Color('#ffffff');
 const COR_NOITE = new THREE.Color('#26304d');
 // Ajusta luzes, fundo e janelas ao horário. k: 0 = noite, 1 = dia.
 export function aplicarDiaNoite(k, { cena, hemi, sol }) {
-  cena.background.set('#08080b').lerp(new THREE.Color('#17171c'), k);
-  cena.fog.color.copy(cena.background);
+  if (!AMBIENTE.fundo) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4; canvas.height = 256;
+    AMBIENTE.fundo = new THREE.CanvasTexture(canvas);
+    AMBIENTE.fundo.colorSpace = THREE.SRGBColorSpace;
+  }
+  const cima = new THREE.Color('#141824').lerp(new THREE.Color('#2a2f3d'), k);
+  const baixo = new THREE.Color('#050507').lerp(new THREE.Color('#0e0e12'), k);
+  pintarFundo(`#${cima.getHexString()}`, `#${baixo.getHexString()}`);
+  cena.background = AMBIENTE.fundo;
+  cena.fog.color.copy(baixo);
   hemi.intensity = 0.45 + 0.75 * k;
   hemi.color.set('#9fb0ff').lerp(new THREE.Color('#fff6e8'), k);
   sol.intensity = 0.35 + 1.25 * k;
@@ -293,6 +307,7 @@ function estante(x, z) {
 export function criarSala(totalAgentes) {
   AMBIENTE.vidros = [];
   AMBIENTE.pendentes = [];
+  AMBIENTE.leds = AMBIENTE.leds.filter((l) => l.parent); // as estações são refeitas logo depois
   const sala = new THREE.Group();
   const pods = Math.max(1, Math.ceil(totalAgentes / (COLUNAS * 2)));
   const largura = COLUNAS * ESPACO_X + 9;
@@ -310,13 +325,8 @@ export function criarSala(totalAgentes) {
 
   // tapete sob as mesas
   for (let p = 0; p < pods; p++) {
-    // tapete grafite com borda na cor da marca
-    const borda = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.8, 5.6), mat(AMBIENTE.marca.cor, { roughness: 0.95 }));
-    borda.rotation.x = -Math.PI / 2;
-    borda.position.set(0, 0.004, p * ESPACO_POD);
-    borda.receiveShadow = true;
-    sala.add(borda);
-    const tapete = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.6, 5.4), mat('#2a2a31', { roughness: 0.95 }));
+    // tapete de lã cinza, sóbrio
+    const tapete = new THREE.Mesh(new THREE.PlaneGeometry(COLUNAS * ESPACO_X + 0.8, 5.6), new THREE.MeshStandardMaterial({ map: texturaTapete(), roughness: 1 }));
     tapete.rotation.x = -Math.PI / 2;
     tapete.position.set(0, 0.006, p * ESPACO_POD);
     tapete.receiveShadow = true;
@@ -364,6 +374,31 @@ export function criarSala(totalAgentes) {
   AMBIENTE.relogio = relogio;
   ultimoMinuto = -1;
   atualizarRelogio();
+
+  // quadros: dois na parede da marca (dos lados da placa) e um no fundo, entre o relógio e as janelas
+  const quadros = [[xEsq + 0.13, 1.75, cz - 3.0, Math.PI / 2, 1.0, 1.3, 0], [xEsq + 0.13, 1.75, cz + 3.0, Math.PI / 2, 1.0, 1.3, 1]];
+  for (const [x, y, z, rot, l, a, estilo] of quadros) {
+    const q = quadroParede(l, a, estilo);
+    q.position.set(x, y, z);
+    q.rotation.y = rot;
+    sala.add(q);
+  }
+  // prateleira com plantinhas e o quadro </> na parede da marca, perto do sofá
+  const prateleira = new THREE.Group();
+  prateleira.position.set(xEsq + 0.25, 2.2, zFundo + 2.6);
+  prateleira.add(caixa(0.26, 0.04, 1.6, mat('#2a2a30'), 0, 0, 0));
+  for (const dz of [-0.55, 0.1, 0.6]) {
+    prateleira.add(cilindro(0.07, 0.06, 0.12, mat(dz > 0 ? '#e7e5e4' : '#c4683e'), 0, 0.08, dz, 12));
+    const folhas = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), mat('#3d8b4f'));
+    folhas.position.set(0, 0.21, dz);
+    folhas.scale.set(1, 0.8, 1);
+    prateleira.add(folhas);
+  }
+  sala.add(prateleira);
+  const codigoQuadro = quadroParede(0.7, 0.9, 2);
+  codigoQuadro.position.set(xEsq + 0.13, 1.4, zFundo + 4.4);
+  codigoQuadro.rotation.y = Math.PI / 2;
+  sala.add(codigoQuadro);
 
   // estante na parede da marca e pendente na copa
   sala.add(estante(xEsq + 0.3, cz + profundidade / 2 - 2.2));
@@ -632,6 +667,58 @@ export function criarEstacao(agente) {
     g.add(cilindro(0.015, 0.015, 0.08, mat('#18181b'), 0.5, altura + 0.11, zCentro - 0.25));
   }
 
+  if (agente.id === 'devops') {
+    // mini rack de servidor com LEDs piscando, no chão ao lado da mesa
+    const rack = new THREE.Group();
+    rack.position.set(-1.12, 0, zCentro + 0.05);
+    rack.add(caixa(0.36, 0.78, 0.5, mat('#17181d', { metalness: 0.5, roughness: 0.45 }), 0, 0.39, 0));
+    for (let n = 0; n < 4; n++) {
+      rack.add(caixa(0.3, 0.12, 0.01, mat('#24262d'), 0, 0.14 + n * 0.17, -0.255));
+      for (let k = 0; k < 3; k++) {
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshStandardMaterial({ color: k === 2 ? '#f59e0b' : '#22c55e', emissive: k === 2 ? '#f59e0b' : '#22c55e', emissiveIntensity: 1 }));
+        led.position.set(-0.1 + k * 0.035, 0.14 + n * 0.17, -0.262);
+        led.userData = { vel: 3 + ((n * 3 + k) % 5) * 1.7, fase: n + k * 2.1, limiar: k === 2 ? 0.7 : -0.2 };
+        AMBIENTE.leds.push(led);
+        rack.add(led);
+      }
+    }
+    g.add(rack);
+    // adesivo de baleia (Docker) na caneca? um pequeno terminal verde na mesa
+    g.add(caixa(0.22, 0.015, 0.16, mat('#14532d', { emissive: '#22c55e', emissiveIntensity: 0.25 }), 0.5, altura + 0.035, zCentro - 0.22));
+  }
+  if (agente.id === 'documentador') {
+    // pilha de manuais e caderno aberto
+    ['#f4f1ea', '#e7e5e4', '#fafaf9'].forEach((c, i) => g.add(caixa(0.26, 0.015, 0.34, mat(c), 0.55, altura + 0.035 + i * 0.016, zCentro + 0.08).rotateY(i * 0.1 - 0.1)));
+    const caderno = new THREE.Group();
+    caderno.position.set(-0.55, altura + 0.035, zCentro - 0.08);
+    caderno.add(caixa(0.2, 0.012, 0.28, mat('#fafaf9'), -0.1, 0, 0).rotateZ(0.04));
+    caderno.add(caixa(0.2, 0.012, 0.28, mat('#fafaf9'), 0.1, 0, 0).rotateZ(-0.04));
+    caderno.add(caixa(0.012, 0.02, 0.28, mat(agente.cor), 0, 0.004, 0));
+    g.add(caderno);
+  }
+  if (agente.id === 'frontend') {
+    // celular num suporte mostrando a versão mobile
+    const cel = new THREE.Group();
+    cel.position.set(-0.55, altura + 0.03, zCentro + 0.12);
+    cel.rotation.y = 0.35;
+    cel.add(caixa(0.07, 0.02, 0.07, mat('#3a3f4a'), 0, 0.01, 0));
+    cel.add(caixa(0.075, 0.15, 0.01, mat('#111'), 0, 0.09, 0.0).rotateX(-0.25));
+    const telaCel = new THREE.Mesh(new THREE.PlaneGeometry(0.064, 0.13), new THREE.MeshBasicMaterial({ color: agente.cor }));
+    telaCel.position.set(0, 0.09, -0.007);
+    telaCel.rotation.set(0.25, Math.PI, 0);
+    cel.add(telaCel);
+    g.add(cel);
+  }
+  if (['requisitos', 'pesquisador'].includes(agente.id)) {
+    // post-its na divisória
+    ['#fde68a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#fde68a'].forEach((c, i) => {
+      const nota = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.1), mat(c, { side: THREE.DoubleSide }));
+      nota.position.set(-0.6 + i * 0.28, altura + 0.24 + ((i * 7) % 3) * 0.04, zCentro + profundidade / 2 - 0.001);
+      nota.rotation.set(0, Math.PI, ((i * 13) % 5 - 2) * 0.06);
+      g.add(nota);
+    });
+  }
+
   if (agente.atividade === 'quadro') {
     const quadro = criarQuadroBranco();
     quadro.grupo.position.set(0, 0, -1.55);
@@ -793,21 +880,98 @@ export function desenharQuadro(quadro, escrevendo, dt) {
 }
 
 function texturaPiso() {
+  // tábuas de carvalho: tons variados, emendas desencontradas e veios
   const c = document.createElement('canvas');
-  c.width = c.height = 256;
+  c.width = c.height = 512;
   const ctx = c.getContext('2d');
+  const ALT = 512 / 8;
+  let semente = 7;
+  const aleatorio = () => ((semente = (semente * 9301 + 49297) % 233280) / 233280);
   for (let i = 0; i < 8; i++) {
-    const tom = 150 + ((i * 37) % 30);
-    ctx.fillStyle = `rgb(${tom}, ${tom * 0.72 | 0}, ${tom * 0.5 | 0})`;
-    ctx.fillRect(0, i * 32, 256, 32);
-    ctx.fillStyle = '#0002';
-    ctx.fillRect(0, i * 32, 256, 2);
-    ctx.fillRect(((i * 97) % 256), i * 32, 2, 32);
+    const y = i * ALT;
+    let x = -aleatorio() * 300;
+    while (x < 512) {
+      const comp = 220 + aleatorio() * 200;
+      const tom = 0.86 + aleatorio() * 0.2;
+      ctx.fillStyle = `rgb(${196 * tom | 0}, ${152 * tom | 0}, ${108 * tom | 0})`;
+      ctx.fillRect(x, y, comp, ALT);
+      // veios
+      for (let v = 0; v < 7; v++) {
+        ctx.strokeStyle = `rgba(110, 70, 35, ${0.05 + aleatorio() * 0.08})`;
+        ctx.lineWidth = 1 + aleatorio() * 1.5;
+        const yv = y + 6 + aleatorio() * (ALT - 12);
+        ctx.beginPath(); ctx.moveTo(x, yv);
+        ctx.bezierCurveTo(x + comp * 0.3, yv + (aleatorio() - 0.5) * 8, x + comp * 0.7, yv + (aleatorio() - 0.5) * 8, x + comp, yv);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(40, 24, 10, 0.35)';
+      ctx.fillRect(x, y, 2, ALT); // emenda
+      x += comp;
+    }
+    ctx.fillStyle = 'rgba(40, 24, 10, 0.4)';
+    ctx.fillRect(0, y, 512, 2);
+    ctx.fillStyle = 'rgba(255, 240, 220, 0.08)';
+    ctx.fillRect(0, y + 2, 512, 2); // brilho na borda da tábua
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
   return t;
+}
+
+// tapete de lã cinza com trama e borda discreta
+function texturaTapete() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#4a4c53'; ctx.fillRect(0, 0, 512, 256);
+  for (let i = 0; i < 5000; i++) {
+    ctx.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.05)';
+    ctx.fillRect(Math.random() * 512, Math.random() * 256, 2, 2);
+  }
+  ctx.strokeStyle = 'rgba(20, 20, 24, 0.55)'; ctx.lineWidth = 10; ctx.strokeRect(5, 5, 502, 246);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'; ctx.lineWidth = 2; ctx.strokeRect(20, 20, 472, 216);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// quadro de parede: arte abstrata na paleta do escritório
+function quadroParede(largura, altura, estilo = 0) {
+  const g = new THREE.Group();
+  g.add(caixa(largura + 0.08, altura + 0.08, 0.04, mat('#18181b'), 0, 0, 0));
+  const arte = canvasPlano(largura, altura, 256, Math.round(256 * altura / largura), { basico: false });
+  const c = arte.userData.canvas; const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#f4f1ea'; ctx.fillRect(0, 0, W, H);
+  const marca = AMBIENTE.marca.cor;
+  if (estilo === 0) {
+    ctx.fillStyle = marca; ctx.beginPath(); ctx.arc(W * 0.38, H * 0.42, W * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#18181b'; ctx.fillRect(W * 0.52, H * 0.3, W * 0.3, H * 0.5);
+    ctx.fillStyle = '#e0b23c'; ctx.fillRect(W * 0.18, H * 0.72, W * 0.5, H * 0.06);
+  } else if (estilo === 1) {
+    for (let i = 0; i < 6; i++) { ctx.strokeStyle = i % 2 ? '#18181b' : marca; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(W / 2, H * 1.05, W * (0.12 + i * 0.1), Math.PI, 0); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = '#18181b'; ctx.font = `800 ${W * 0.16}px ${FONTE}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('</>', W / 2, H * 0.45);
+    ctx.fillStyle = marca; ctx.fillRect(W * 0.3, H * 0.66, W * 0.4, H * 0.04);
+  }
+  arte.material.map.needsUpdate = true;
+  arte.position.z = 0.021;
+  g.add(arte);
+  return g;
+}
+
+// fundo da cena: degradê (mais claro no alto), refeito no dia/noite
+function pintarFundo(cima, baixo) {
+  const f = AMBIENTE.fundo;
+  if (!f) return;
+  const ctx = f.image.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, f.image.height);
+  g.addColorStop(0, cima); g.addColorStop(1, baixo);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, f.image.width, f.image.height);
+  f.needsUpdate = true;
 }
 
 function texturaCeu() {
