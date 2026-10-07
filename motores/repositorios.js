@@ -109,6 +109,8 @@ const falhou = (r) => !r || r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
 
 // pedirRevisao({ cliente, agente, numero, url, texto, anexo }) → ordem para o revisor (ou null, sem revisor)
 export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorrecao, pedirRevisao, avisar, informar }) {
+  // de qual PR é a notificação (a central de notificações agrupa por PR) e em que pé ele ficou
+  const sobre = (pr, estado, extra = {}) => ({ categoria: 'github', pr: { cliente: pr.cliente, numero: pr.numero, url: pr.url, agente: pr.agente }, estado, ...extra });
   const token = process.env.GITHUB_TOKEN;
   const revisao = process.env.GITHUB_REVISAO !== '0';
   const arquivo = join(dadosDir, 'repositorios.json');
@@ -157,7 +159,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       repo.netlify = { id: site.id || site.site_id, url: site.ssl_url || site.url, admin: site.admin_url };
       delete repo.netlifyErroEm;
       console.log(`[netlify] site criado para ${repo.nome}: ${repo.netlify.url}`);
-      informar?.(`🌐 Site no Netlify criado para ${repo.nome}: ${repo.netlify.url} (cada PR ganha um preview)`);
+      informar?.(`🌐 Site no Netlify criado para ${repo.nome}: ${repo.netlify.url} (cada PR ganha um preview)`, { categoria: 'github', cliente: Object.keys(repos).find((c) => repos[c] === repo), importante: true });
     } catch (erro) {
       repo.netlifyErroEm = new Date().toISOString();
       console.warn(`[netlify] não consegui criar o site de ${repo.nome}: ${erro.message}`);
@@ -358,7 +360,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
         : await commitar(repo, branch, repo.padrao, arquivos, mensagem);
       if (existente?.reconstruir) {
         existente.reconstruir = null;
-        informar?.(`🔀 Conflito do PR #${existente.numero} resolvido por ${r.agente}: ${existente.url}`);
+        informar?.(`✅ Conflito do PR #${existente.numero} resolvido por ${r.agente}: ${existente.url}`, sobre(existente, 'testando', { nivel: 'ok', importante: true }));
       }
       cacheArvore.delete(ordem.cliente);
       let pr = existente;
@@ -375,14 +377,14 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
         }
         pr = { cliente: ordem.cliente, numero: novo.number, url: novo.html_url, branch, agente: r.agente, ordemId: ordem.id, indice, correcoes: 0 };
         prs.push(pr);
-        informar?.(`🔀 ${r.agente} abriu o PR #${pr.numero} (${arquivos.length} arquivo(s)): ${pr.url}`);
+        informar?.(`🔀 ${r.agente} abriu o PR #${pr.numero} (${arquivos.length} arquivo(s)): ${pr.url}`, sobre(pr, 'testando'));
       }
       Object.assign(pr, { sha, estado: 'testando', desde: new Date().toISOString(), ultimaOrdem: ordem.id, aguardando: null, avisouCiParado: false, avisouInfra: false });
       r.repo = { pr: pr.numero, url: pr.url, branch, arquivos: arquivos.map((a) => a.caminho), estado: 'testando' };
       await gravar();
       mudou(ordem);
       console.log(`[github] ${r.agente}: ${arquivos.length} arquivo(s) em ${pr.url}`);
-      if (falhaAnterior) informar?.(`🔁 A entrega de ${r.agente} que não tinha subido agora está no GitHub: ${pr.url}`);
+      if (falhaAnterior) informar?.(`🔁 A entrega de ${r.agente} que não tinha subido agora está no GitHub: ${pr.url}`, sobre(pr, 'testando'));
     } catch (erro) {
       console.error(`[github] ${erro.message}`);
       // fica na fila de reenvio: tenta de novo sozinho, com espera crescente, por até 2 dias
@@ -391,7 +393,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       const espera = REENVIO_MIN[Math.min(tentativas - 1, REENVIO_MIN.length - 1)] * 60000 * (Number(process.env.GITHUB_REENVIO_ESCALA) || 1);
       const desistiu = Date.now() - Date.parse(desde) > REENVIO_LIMITE_MS;
       r.repo = { erro: erro.message.slice(0, 200), tentativas, desde, proxima: desistiu ? null : new Date(Date.now() + espera).toISOString(), desistiu };
-      if (desistiu) avisar?.(`⚠️ A entrega de ${r.agente} ("${ordem.texto.slice(0, 80)}") não conseguiu subir ao GitHub em 2 dias de tentativas: ${erro.message.slice(0, 160)}. Peça um ↩ ajuste para tentar de novo.`);
+      if (desistiu) avisar?.(`⚠️ A entrega de ${r.agente} ("${ordem.texto.slice(0, 80)}") não conseguiu subir ao GitHub em 2 dias de tentativas: ${erro.message.slice(0, 160)}. Peça um ↩ ajuste para tentar de novo.`, { categoria: 'github', cliente: ordem.cliente });
       mudou(ordem);
     }
   }
@@ -439,13 +441,13 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
       await gh('DELETE', `/repos/${repo.dono}/${repo.nome}/git/refs/heads/${encodeURIComponent(pr.branch)}`).catch(() => {});
       marcar(pr, 'mesclado');
       cacheArvore.delete(pr.cliente);
-      informar?.(`✅ PR #${pr.numero} mesclado${pr.correcoes ? ` depois de ${pr.correcoes} correção(ões)` : ''}: ${pr.url}`);
+      informar?.(`✅ PR #${pr.numero} mesclado${pr.correcoes ? ` depois de ${pr.correcoes} correção(ões)` : ''}: ${pr.url}`, sobre(pr, 'mesclado', { nivel: 'ok', importante: true }));
       console.log(`[github] PR mesclado: ${pr.url}`);
     } catch (erro) {
       // 405/409: o PR não pode ser mesclado (conflito com o main): o escritório resolve
       if ([405, 409].includes(erro.status)) return resolverConflito(pr, repo);
       marcar(pr, 'conflito');
-      avisar?.(`⚠️ Não consegui mesclar o ${pr.url} (${erro.message.slice(0, 120)}). Veja no GitHub.`);
+      avisar?.(`⚠️ Não consegui mesclar o ${pr.url} (${erro.message.slice(0, 120)}). Veja no GitHub.`, sobre(pr, 'conflito'));
     }
   }
 
@@ -475,7 +477,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     pr.conflitos = (pr.conflitos || 0) + 1;
     if (pr.conflitos > MAX_CONFLITOS) {
       marcar(pr, 'conflito');
-      avisar?.(`⚠️ O ${pr.url} continua em conflito com o ${repo.padrao} depois de ${MAX_CONFLITOS} tentativas de juntar as mudanças. Precisa de um olhar humano.`);
+      avisar?.(`⚠️ O ${pr.url} continua em conflito com o ${repo.padrao} depois de ${MAX_CONFLITOS} tentativas de juntar as mudanças. Precisa de um olhar humano.`, sobre(pr, 'conflito'));
       await gravar();
       return;
     }
@@ -500,7 +502,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
         ordemId: ordem.id, indice,
         texto: `O pull request #${pr.numero} ficou em conflito com o ${repo.padrao}: outro trabalho já mesclado mudou os mesmos arquivos (${conflitantes.join(', ') || 'veja abaixo'}). Junte as duas mudanças — mantenha o que o outro trabalho fez E o que você fez — e entregue a versão FINAL completa de cada um desses arquivos, no mesmo caminho. Não entregue os outros arquivos (eles já estão certos). Tentativa ${pr.conflitos} de ${MAX_CONFLITOS}.\n\n${blocos.join('\n\n')}`,
       });
-      informar?.(`🔀 O PR #${pr.numero} entrou em conflito com o ${repo.padrao} (${conflitantes.join(', ')}): ${pr.agente} está juntando as mudanças.`);
+      avisar?.(`🔀 O PR #${pr.numero} entrou em conflito com o ${repo.padrao} (${conflitantes.join(', ')}): ${pr.agente} está juntando as mudanças. ${pr.url}`, sobre(pr, 'conflito'));
     }
     console.log(`[github] PR #${pr.numero}: conflito em ${conflitantes.join(', ') || '?'}; ${pr.agente} vai juntar as mudanças`);
     await gravar();
@@ -532,7 +534,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     const primeiro = !pr.preview;
     pr.previewSha = pr.sha;
     marcar(pr, pr.estado, { preview: url });
-    if (primeiro) informar?.(`🔎 Preview do PR #${pr.numero}: ${url}`);
+    if (primeiro) informar?.(`🔎 Preview do PR #${pr.numero}: ${url}`, sobre(pr, pr.estado));
     await gravar();
   }
 
@@ -542,7 +544,7 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
     if (url) {
       repo.producao = url;
       pr.producaoOk = true;
-      informar?.(`🌐 ${clientes.nomeDe?.(pr.cliente) || pr.cliente} atualizado no ar: ${url}`);
+      informar?.(`🌐 ${clientes.nomeDe?.(pr.cliente) || pr.cliente} atualizado no ar: ${url}`, sobre(pr, 'mesclado', { nivel: 'ok', importante: true }));
       mudou();
     } else if ((Date.now() - Date.parse(pr.mescladoEm)) / 60000 > PRODUCAO_MIN) {
       pr.producaoOk = false; // não há deploy ligado ao repositório
@@ -554,9 +556,12 @@ export function criarRepositorios({ dadosDir, ordens, clientes, mudou, pedirCorr
   function corrigir(pr, motivo, detalhes) {
     if (pr.correcoes >= MAX_CORRECOES) {
       marcar(pr, 'falhou');
-      avisar?.(`⚠️ ${motivo} no ${pr.url} depois de ${MAX_CORRECOES} correções. Precisa de um olhar humano.`);
+      // CI que falha não muda nada no projeto (o PR só não é mesclado): fica no histórico do PR, sem incomodar
+      const notificar = /CI/.test(motivo) ? informar : avisar;
+      notificar?.(`⚠️ ${motivo} no ${pr.url} depois de ${MAX_CORRECOES} correções. O PR ficou parado.`, sobre(pr, 'falhou', { silencioso: true }));
       return;
     }
+    informar?.(`🔧 ${motivo} no PR #${pr.numero}: ${pr.agente} está corrigindo (correção ${pr.correcoes + 1} de ${MAX_CORRECOES}).`, sobre(pr, 'corrigindo', { silencioso: true }));
     pr.correcoes++;
     marcar(pr, 'corrigindo');
     const ordem = ordens.find((x) => x.id === pr.ultimaOrdem);
@@ -610,8 +615,7 @@ ${diff}`,
       body: `**Revisão de código — ${resp.agente}** (${mudancas ? '🔧 pediu mudanças' : '✅ aprovado'})\n\n${resp.texto.slice(0, 60000)}`,
     }).catch((erro) => console.warn(`[github] não consegui comentar a revisão no PR #${pr.numero}: ${erro.message}`));
     if (mudancas) {
-      informar?.(`🔧 ${resp.agente} pediu mudanças no PR #${pr.numero}: ${pr.url}`);
-      corrigir(pr, 'A revisão de código pediu mudanças', resp.texto.slice(0, 6000));
+            corrigir(pr, 'A revisão de código pediu mudanças', resp.texto.slice(0, 6000));
     } else {
       await mesclar(pr, repo);
     }
@@ -676,7 +680,7 @@ ${diff}`,
           // não deu para ler o resultado dos testes: não fica "testando" para sempre
           if (!pr.avisouLeitura) {
             pr.avisouLeitura = true;
-            avisar?.(`⚠️ Não consigo ler o resultado dos testes do ${pr.url}: ${erro.message.slice(0, 160)}. Confira se o token do GitHub tem a permissão "Actions: Read-only". ${minutos < CI_LIMITE_MIN ? `Se não resolver em ${CI_LIMITE_MIN} min, o PR segue para a revisão sem o resultado dos testes.` : 'O PR segue para a revisão sem o resultado dos testes.'}`);
+            informar?.(`⚠️ Não consigo ler o resultado dos testes do ${pr.url}: ${erro.message.slice(0, 160)}. Confira se o token do GitHub tem a permissão "Actions: Read-only". ${minutos < CI_LIMITE_MIN ? `Se não resolver em ${CI_LIMITE_MIN} min, o PR segue para a revisão sem o resultado dos testes.` : 'O PR segue para a revisão sem o resultado dos testes.'}`, sobre(pr, 'testando', { silencioso: true }));
             await gravar();
           }
           if (minutos >= CI_LIMITE_MIN) { pr.aguardando = null; await revisar(pr, repo); }
@@ -696,9 +700,9 @@ ${diff}`,
           const actionsPresos = pendentes.filter(ehActions);
           if (!pr.avisouCiParado) {
             pr.avisouCiParado = true;
-            avisar?.(`⏳ O CI do ${pr.url} está parado há ${Math.round(minutos)} min esperando: ${nomes}. ${actionsPresos.length
+            informar?.(`⏳ O CI do ${pr.url} está parado há ${Math.round(minutos)} min esperando: ${nomes}. ${actionsPresos.length
               ? 'Os testes do GitHub Actions não terminaram (veja a aba Actions do repositório: fila parada, aprovação pendente ou minutos do plano esgotados).'
-              : 'São verificações de fora do GitHub (ex.: Netlify), que não decidem o merge.'} O PR segue para a revisão sem esperar mais.`);
+              : 'São verificações de fora do GitHub (ex.: Netlify), que não decidem o merge.'} O PR segue para a revisão sem esperar mais.`, sobre(pr, 'testando', { silencioso: true }));
           }
           if (actionsPresos.length && process.env.GITHUB_CI_TRAVADO === 'esperar') continue;
         }
@@ -707,7 +711,7 @@ ${diff}`,
         const infra = terminados.filter((c) => PROBLEMA_INFRA.includes(c.conclusion));
         if (infra.length && !pr.avisouInfra) {
           pr.avisouInfra = true;
-          avisar?.(`⚠️ No ${pr.url}, ${infra.map((c) => `"${c.name}" terminou como ${c.conclusion}`).join(', ')}: isso é do GitHub/da conta, não do código. Seguindo sem essa verificação.`);
+          informar?.(`⚠️ No ${pr.url}, ${infra.map((c) => `"${c.name}" terminou como ${c.conclusion}`).join(', ')}: isso é do GitHub/da conta, não do código. Seguindo sem essa verificação.`, sobre(pr, 'testando', { silencioso: true }));
         }
         const falhas = terminados.filter((c) => !['success', 'skipped', 'neutral', ...PROBLEMA_INFRA].includes(c.conclusion));
         if (!falhas.length) { pr.aguardando = null; await procurarPreview(pr, repo); await revisar(pr, repo); continue; }

@@ -28,7 +28,7 @@
     <div id="hoje" aria-label="Resumo de hoje">
       <div class="kpi" title="Entregas feitas hoje"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/></svg><b data-kpi="entregas">0</b><span>entregas hoje</span></div>
       <div class="kpi" title="Agentes trabalhando agora"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><b data-kpi="trabalhando">0</b><span>trabalhando</span></div>
-      <button type="button" class="kpi" id="abrir-erros" title="Erros de hoje · clique para abrir o registro de erros"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><b data-kpi="erros">0</b><span>erros</span></button>
+      <button type="button" class="kpi" id="abrir-erros" title="Problemas de hoje · clique para abrir as notificações"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><b data-kpi="erros">0</b><span>erros</span></button>
       <div class="kpi largo" title="Próxima rotina agendada"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><b data-kpi="rotina">—</b><span data-kpi="rotina-nome">próxima rotina</span></div>
     </div>
     <div id="conexao" title="Origem dos status">● demo</div>
@@ -41,6 +41,7 @@
     <button type="button" id="abrir-entregas" data-rotulo="Entregas"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></button>
     <button type="button" id="abrir-documentacao" data-rotulo="Documentação"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></button>
     <button type="button" id="abrir-relatorio" data-rotulo="Relatório"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-7"/></svg></button>
+    <button type="button" id="abrir-notificacoes" data-rotulo="Notificações"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="selo-notif" hidden></span></button>
     <button type="button" id="abrir-monitor-ias" data-rotulo="Monitor de IAs"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button>
     <button type="button" id="abrir-equipe" data-rotulo="Equipe e IAs"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
     <span class="espaco"></span>
@@ -98,16 +99,21 @@
 
   <dialog id="dlg-erros" aria-labelledby="titulo-erros">
     <header>
-      <h2 id="titulo-erros">Registro de erros</h2>
-      <select name="tipo" aria-label="Tipo">
-        <option value="todos">Todos</option>
-        <option value="agente">Agentes (IA)</option>
-        <option value="github">GitHub</option>
-        <option value="aviso">Avisos do supervisor</option>
-      </select>
+      <h2 id="titulo-erros">Notificações</h2>
+      <select name="projeto" aria-label="Projeto" hidden></select>
       <button type="button" class="fechar" aria-label="Fechar">✕</button>
     </header>
+    <div class="abas-notif" role="tablist" aria-label="Filtrar notificações"></div>
     <div class="corpo"></div>
+    <footer class="rodape-notif">
+      <label hidden>Telegram recebe
+        <select name="telegram">
+          <option value="importantes">só o importante (problemas, PR mesclado, site no ar)</option>
+          <option value="problemas">só problemas</option>
+          <option value="todas">todas as notificações</option>
+        </select>
+      </label>
+    </footer>
   </dialog>
 
   <dialog id="dlg-relatorio" aria-labelledby="titulo-relatorio">

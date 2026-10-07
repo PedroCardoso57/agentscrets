@@ -325,6 +325,10 @@ function atualizarHoje() {
   const ordens = [...ordensVistas.values()].map((v) => v.ordem);
   ui.atualizarKpis({ ordens, trabalhando: [...estacoes.values()].filter((x) => x.estado === 'trabalhando').length, avisosHoje: registroErros?.avisosHoje() || 0 });
   registroErros?.atualizar();
+  const selo = document.querySelector('#abrir-notificacoes .selo-notif');
+  const naoLidas = registroErros?.naoLidas() || 0;
+  selo.hidden = !naoLidas;
+  selo.textContent = naoLidas > 99 ? '99+' : naoLidas;
   // a TV da sala de reunião mostra os mesmos números
   const kpi = (n) => document.querySelector(`[data-kpi="${n}"]`)?.textContent || '0';
   definirPainelTV({ entregas: kpi('entregas'), trabalhando: kpi('trabalhando'), erros: kpi('erros'), projetos: listaClientes.length, proxima: `${kpi('rotina')} ${kpi('rotina-nome') === 'próxima rotina' ? '' : kpi('rotina-nome')}`.trim() });
@@ -499,7 +503,7 @@ const FILTROS = [
   ['novas', 'Novas'], ['andamento', 'Andamento'], ['problema', 'Atenção'], ['concluidas', 'Concluídas'], ['todas', 'Todas'],
 ];
 const PR_ABERTO = ['testando', 'revisando', 'corrigindo'];
-const PR_PROBLEMA = ['falhou', 'conflito'];
+const PR_PROBLEMA = ['conflito']; // CI que não passou não é problema do chefe (o PR só fica parado); conflito é
 const respostaFalhou = (r) => r.erro || /^(Erro:|Interrompida:)/.test(r.texto);
 
 // o que você já viu: { desde, vistas: { id: nº de respostas vistas } } (só neste navegador)
@@ -622,7 +626,7 @@ function blocoResposta(o, r, indice) {
   }
   // código no GitHub: PR e estado do CI
   if (r.repo?.url) { // erro do GitHub vai só para o registro de erros
-    const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '❌ precisa de um olhar humano', conflito: '⚠️ conflito: precisa de um olhar humano', fechado: '🚫 PR fechado no GitHub', cancelado: '⛔ cancelado' };
+    const ESTADO_PR = { testando: '⏳ testando no CI', revisando: '🧐 QA revisando o código', corrigindo: '🔧 corrigindo (CI ou revisão)', mesclado: '✅ mesclado', aprovado: '✅ aprovado, esperando você mesclar', falhou: '⏸ parado: não passou no CI ou na revisão', conflito: '⚠️ conflito: precisa de um olhar humano', fechado: '🚫 PR fechado no GitHub', cancelado: '⛔ cancelado' };
     const linha = document.createElement('div');
     linha.className = 'pr-github';
     {
@@ -653,7 +657,7 @@ function blocoResposta(o, r, indice) {
 function linhasSupervisor(o, destino) {
   const linkErro = () => {
     const b = Object.assign(document.createElement('button'), { type: 'button', className: 'link-erros', textContent: 'ver erro' });
-    b.onclick = (ev) => { ev.stopPropagation(); registroErros?.abrir(); };
+    b.onclick = (ev) => { ev.stopPropagation(); registroErros?.abrir({ aba: 'agentes' }); };
     return b;
   };
   let mostrou = false;
@@ -747,9 +751,9 @@ function desenharFiltros(cartoes) {
     barraFiltros.appendChild(b);
   }
   const acoes = Object.assign(document.createElement('span'), { className: 'acoes-filtros' });
-  const reg = Object.assign(document.createElement('button'), { type: 'button', className: 'icone-filtro registro-erros', title: 'Registro de erros', ariaLabel: 'Registro de erros' });
+  const reg = Object.assign(document.createElement('button'), { type: 'button', className: 'icone-filtro registro-erros', title: 'Notificações: problemas', ariaLabel: 'Notificações: problemas' });
   reg.innerHTML = '<svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
-  reg.onclick = () => registroErros?.abrir();
+  reg.onclick = () => registroErros?.abrir({ aba: 'problemas' });
   if (cartoes.some(ehNova)) {
     const b = Object.assign(document.createElement('button'), { type: 'button', className: 'icone-filtro marcar-vistas', title: 'Marcar todas como vistas', ariaLabel: 'Marcar todas como vistas' });
     b.innerHTML = '<svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg>';
@@ -1049,7 +1053,7 @@ const conexao = document.getElementById('conexao');
 integracao = criarIntegracao({
   aoDocumentacao: (r) => janelaDoc?.aoAtualizar(r),
   aoClientes: (lista) => gestao?.definirClientes(lista),
-  aoAviso: (aviso) => registroErros?.adicionarAviso(aviso), // vai para o registro de erros (sem aviso na tela)
+  aoAviso: (aviso) => registroErros?.adicionarAviso(aviso), // vai para a central de notificações (o sino conta os problemas)
   aoAvisoOk: ({ texto }) => ui.avisar({ icone: '✅', titulo: 'IA de volta', texto: texto.replace(/^✅\s*/, ''), cor: 'var(--trabalhando)', duracao: 8000 }),
   aoIas: (porAgente) => { estadoIas.agentes = porAgente; carregarIas(); },
   aoDecisor({ ativo, online }) {
@@ -1112,7 +1116,8 @@ registroErros = criarRegistroErros({
   ordens: todasOrdens, nomeDe, nomeCliente, aoVerOrdem: (id) => verOrdem(id),
   servidorAtivo: () => integracao.servidorAtivo(), aoMudar: () => atualizarHoje(),
 });
-document.getElementById('abrir-erros').addEventListener('click', () => registroErros.abrir());
+document.getElementById('abrir-erros').addEventListener('click', () => registroErros.abrir({ aba: 'problemas' }));
+document.getElementById('abrir-notificacoes').addEventListener('click', () => registroErros.abrir());
 const monitorIas = criarMonitorIas({ servidorAtivo: () => integracao.servidorAtivo(), nomeDe, aoTerminar: () => carregarIas() });
 document.getElementById('abrir-monitor-ias').addEventListener('click', () => monitorIas.abrir());
 

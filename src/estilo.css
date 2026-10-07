@@ -485,8 +485,36 @@ dialog button.link { background: none; border: none; color: #ff8a92; cursor: poi
 #dlg-erros { width: min(760px, calc(100% - 24px)); }
 .lista-erros { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .lista-erros li { padding: 9px 11px; border-radius: 10px; background: var(--cartao); border: 1px solid var(--borda); border-left: 3px solid var(--erro); font-size: 12px; }
-.lista-erros li.aviso { border-left-color: var(--aguardando); }
-.lista-erros li.github { border-left-color: var(--concluido); }
+.lista-erros li.info { border-left-color: var(--concluido); }
+.lista-erros li.ok { border-left-color: var(--trabalhando); }
+.lista-erros li.ok pre, .lista-erros li.info pre { color: var(--texto); }
+.lista-erros li.nova .cab b::after { content: 'NOVA'; margin-left: 6px; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #fff; background: var(--marca); border-radius: 4px; padding: 1px 4px; vertical-align: 1px; }
+.lista-erros .cab { align-items: baseline; flex-wrap: wrap; }
+.lista-erros .cab b { flex: 1; min-width: 0; }
+.lista-erros .estado-pr { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #ffffff10; border: 1px solid var(--borda); }
+.lista-erros .acoes-pr { display: flex; gap: 12px; margin-top: 6px; font-size: 11px; }
+.lista-erros .acoes-pr a, .lista-erros .acoes-pr button { font: inherit; color: var(--suave); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.lista-erros .acoes-pr a:hover, .lista-erros .acoes-pr button:hover { color: var(--texto); }
+.historico-pr { margin: 8px 0 0; padding: 8px 0 0 18px; border-top: 1px dashed var(--borda); display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.historico-pr li { padding: 0; background: none; border: none; color: var(--texto); word-break: break-word; }
+.historico-pr li.problema { color: #ffb3b8; }
+.historico-pr .quando { color: var(--suave); }
+.abas-notif { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 16px 0; }
+.aba-notif { font: inherit; font-size: 12px; font-weight: 600; color: var(--suave); background: #ffffff08; border: 1px solid var(--borda); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.aba-notif:hover { color: var(--texto); }
+.aba-notif.ativa { color: var(--texto); background: var(--marca-suave); border-color: var(--marca); }
+.aba-notif.tem:not(.ativa) { color: #ff8a92; }
+.ver-resolvidos { display: block; margin: 10px auto 0; font: inherit; font-size: 12px; color: var(--suave); background: none; border: none; cursor: pointer; text-decoration: underline; }
+.rodape-notif { padding: 10px 16px 14px; border-top: 1px solid var(--borda); font-size: 12px; color: var(--suave); }
+.rodape-notif:not(:has(label:not([hidden]))) { display: none; }
+.rodape-notif label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rodape-notif select { width: auto; max-width: 100%; }
+.selo-notif {
+  position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  background: var(--marca); color: #fff; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center;
+  box-shadow: 0 0 0 2px var(--painel-forte); pointer-events: none;
+}
+.selo-notif[hidden] { display: none; }
 .lista-erros .cab { display: flex; justify-content: space-between; gap: 8px; }
 .lista-erros .quando { color: var(--suave); font-size: 11px; }
 .lista-erros .pedido { margin-top: 3px; color: var(--suave); }
@@ -724,3 +752,5 @@ body.modo-lista #reabrir-painel { display: none; }
 .cfg-form .situacao-modelo.ok { color: var(--trabalhando); }
 .cfg-form .situacao-modelo.falha { color: #ff8a92; }
 .cfg-form .filtro-funcionando { font-size: 12px; }
+.lista-erros .resolver { font: inherit; font-size: 11px; color: var(--suave); background: #ffffff08; border: 1px solid var(--borda); border-radius: 999px; padding: 1px 8px; cursor: pointer; text-decoration: none; }
+.lista-erros .resolver:hover { color: var(--texto); border-color: var(--trabalhando); }

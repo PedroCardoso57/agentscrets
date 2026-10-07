@@ -137,7 +137,16 @@ Use a barra de baixo da tela:
 
 **Cancelar:** não quer mais uma ordem? Abra o cartão e clique em **⛔ Cancelar ordem** (ou no **✕** de uma tarefa do plano). Ela para, e tudo o que ela gerou também: tarefas do plano, entrega final, ajustes e revisões de PR. Ninguém tenta de novo, nada mais sobe ao GitHub e o Tech Lead fica sabendo que você cancelou (o piloto automático não refaz). Se um agente estava no meio da resposta, ela chega e fica guardada, mas não vira plano nem PR. O cartão fica como **⛔ cancelada** (no filtro Concluídas).
 
-**Registro de erros:** as mensagens de erro (das IAs, do GitHub e os avisos do supervisor) não aparecem mais no meio das respostas nem como aviso na tela. Ficam num lugar só: clique em **erros** na faixa Hoje ou em **🗒 registro de erros** no painel de ordens. No cartão aparece só a situação (ex.: "tenta de novo às 17:43") com um link "ver erro".
+**Central de notificações (🔔 na barra lateral):** tudo o que o escritório avisa fica num lugar só, sem encher a tela:
+- **Uma linha por PR:** os avisos do mesmo PR viram uma linha só, com o estado atual ("em conflito", "mesclado"…). O histórico abre ao clicar em "histórico".
+- **IAs agrupadas:** "caiu → voltou" de uma mesma IA também vira uma linha só.
+- **Filtros:** Todas · ⚠️ Problemas · 🔀 PRs · 🧠 IAs · 🤖 Agentes, e por projeto.
+- **Problemas:** mostra só o que ainda está com problema. Um conflito que já foi resolvido sai dali sozinho, e "✓ já resolvi" tira um aviso que você já tratou (ele volta se acontecer de novo).
+- **Sino:** o número conta só os problemas que você ainda não viu.
+- **CI não é problema:** se o CI falhar, o agente corrige sozinho e isso fica só no histórico do PR, sem notificação. **Conflito é problema:** quando um PR entra em conflito, você é avisado na hora (e no Telegram).
+- **Telegram:** escolha no rodapé da central o que vai para lá: só o importante (padrão: problemas, conflitos, PR mesclado, site no ar, IA que voltou), só problemas ou todas. Também dá para definir `TELEGRAM_NOTIFICAR` no `.env`.
+
+Os erros das IAs não aparecem no meio das respostas. No cartão aparece só a situação (ex.: "tenta de novo às 17:43") com um link "ver erro", que abre a central.
 
 Sem o servidor rodando (ou no modo demo), os agentes simulados cumprem a ordem e respondem, marcados como *simulação*. Com `node servidor.js`, a ordem vai de verdade para os seus motores.
 
@@ -294,7 +303,7 @@ Na janela **🗓 Rotinas** ficam o liga/desliga, o intervalo (padrão: 60 min), 
 O servidor confere sozinho, a cada 15 minutos (`SAUDE_INTERVALO_MIN`), cada IA que a equipe usa: se a chave existe, se o provedor aceita a chave e se o modelo escolhido existe. Essa conferência só lista os modelos, então não gasta tokens. Ele também aprende com o uso: se uma tarefa falha por falta de crédito, limite de uso ou chave recusada, a IA é marcada na hora; quando ela volta a responder, a marca sai.
 
 - **Onde ver:** no topo da aba **Equipe** ("IAs: todas funcionando" ou quais estão com problema, com o botão **verificar agora**) e um selo vermelho no agente afetado.
-- **Avisos:** quando uma IA cai, o aviso vai para o registro de erros e para o Telegram; quando volta, aparece um aviso verde e o Telegram avisa também.
+- **Avisos:** quando uma IA cai, o aviso vai para a central de notificações e para o Telegram; quando volta, aparece um aviso verde e o Telegram avisa também.
 - **Desvio automático:** se a IA de um agente está sem crédito, sem chave, com chave recusada ou com um modelo que não existe, ele usa direto a IA reserva (sem perder tempo tentando).
 - **Nada se perde:** enquanto a IA (e a reserva) estiver fora, o supervisor espera em vez de gastar as tentativas; quando ela volta, as tarefas paradas são retomadas na hora.
 - Uma IA marcada com limite ou sem crédito recebe, de tempos em tempos, um "ok" bem curto (poucos tokens) para saber se já voltou. `SAUDE_IAS=0` desliga o monitor.
