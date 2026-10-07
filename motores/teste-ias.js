@@ -114,7 +114,7 @@ export function criarTesteIas({ equipe, aoResultado = () => {} }) {
       for (let item = fila.shift(); item; item = fila.shift()) {
         const { alvo, modelo } = item;
         const inicio = Date.now();
-        const r = { provedor: alvo.provedor, nomeProvedor: alvo.nome, modelo, ...usos(alvo, modelo) };
+        const r = { provedor: alvo.provedor, nomeProvedor: alvo.nome, modelo, ...(alvo.provedor === 'compativel' ? { baseUrl: alvo.baseUrl, chaveEnv: alvo.chaveEnv || '' } : {}), ...usos(alvo, modelo) };
         try {
           const resposta = await Promise.race([testarModelo(alvo, modelo), new Promise((_, nao) => setTimeout(() => nao(new Error(`sem resposta em ${TEMPO_TESTE / 1000} s (timeout)`)), TEMPO_TESTE))]);
           Object.assign(r, { estado: 'ok', ms: Date.now() - inicio, resposta: String(resposta || '(resposta vazia, mas a IA atendeu)').slice(0, 80) });
