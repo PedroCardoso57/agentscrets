@@ -21,6 +21,7 @@ export const AGENTES = [
   { id: 'qa',           nome: 'QA',            funcao: 'Testes, code review e segurança',        atividade: 'analisar', cor: '#8e99ad', cabelo: '#6f6f75', pele: '#c68642', estilo: 'calvo' },
   { id: 'devops',       nome: 'DevOps',        funcao: 'Deploy, Docker, VPS e backups',          atividade: 'analisar', cor: '#f07a3a', cabelo: '#3b2a20', pele: '#8d5524', estilo: 'curto', barba: 'curta' },
   { id: 'documentador', nome: 'Documentador',  funcao: 'Documentação técnica e manuais',         atividade: 'digitar',  cor: '#e0b23c', cabelo: '#a0522d', pele: '#ffdbac', estilo: 'coque', feminina: true, brinco: '#e11d2a' },
+  { id: 'linkedin',     nome: 'LinkedIn',      funcao: 'Posts virais e tendências do LinkedIn',  atividade: 'digitar',  cor: '#0a66c2', cabelo: '#7a3b1e', pele: '#e0ac69', estilo: 'longo', feminina: true, brinco: '#f4d35e' },
 ];
 
 // Você! O seu bonequinho fica na mesa do chefe e leva as ordens até a equipe.

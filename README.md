@@ -18,6 +18,7 @@ Uma software house de agentes, focada em **sistemas sob medida (ERP, CRM, painé
 | QA | `qa` | Code review, testes e segurança; revisa as entregas dos agentes marcados com "revisão" |
 | DevOps | `devops` | Docker, deploy na VPS, HTTPS, CI/CD, monitoramento e backups |
 | Documentador | `documentador` | README, documentação da API, manuais do usuário e a documentação viva do projeto |
+| LinkedIn | `linkedin` | Pesquisa o que está em alta no LinkedIn (com busca na internet) e escreve posts com potencial de viralizar |
 
 As funções e instruções de cada um ficam em `motores/time-dev.js` (e nos `motores.*.json` de exemplo); dá para mudar tudo em ⚙ Equipe. **Quem já usava o time antigo** (Pesquisador, Redator, Programador, Revisor) é convertido sozinho na primeira vez que o servidor sobe: cada papel mantém a IA que você tinha escolhido (Pesquisador → Requisitos, Programador → Back-end, Redator → Documentador, Revisor → QA), e Front-end e DevOps entram com a mesma IA do Back-end. As rotinas acompanham a troca de nomes.
 
@@ -118,6 +119,20 @@ Em qualquer linguagem, mande o cabeçalho `Authorization: Bearer <token>` em tod
 | `desenhar` | Desenha na mesa digitalizadora; o monitor mostra o desenho |
 | `analisar` | Mexe no mouse diante de gráficos e às vezes para para pensar |
 | `quadro` | Levanta, vai até o quadro branco e escreve o plano com post-its |
+
+## 📣 LinkedIn: posts virais
+
+A **LinkedIn** (mesa com ring light) pesquisa e escreve posts para o LinkedIn. Dê uma ordem para ela (ex.: "post viral sobre automação com IA para pequenas empresas") ou escolha um cliente para o post sair no tom da ficha dele. A entrega vem pronta:
+- **Pesquisa:** o que está em alta no nicho, com fonte e data de cada tendência. Ela usa a busca na internet; não inventa curtidas, números nem posts de outras pessoas.
+- **Post pronto para colar:** gancho nas 2 primeiras linhas, frases curtas, pergunta no final e 3 a 5 hashtags.
+- **Mais 2 ganchos** para teste A/B.
+- **Primeiro comentário:** é onde vai o link, porque link no corpo do post derruba o alcance.
+- **Visual:** sugestão de imagem, ou o texto de cada slide se for carrossel.
+- **Horário:** melhor dia e hora para postar.
+
+Para postar sempre, crie uma 🗓 Rotina (ex.: toda segunda, terça e quinta às 8h: "post viral sobre ..."), e o post chega pelo Telegram. A pesquisa na internet precisa de Claude ou Gemini como IA dela.
+
+Quem já tinha a equipe montada ganha a LinkedIn sozinha na próxima vez que o servidor subir, com a mesma IA do Back-end. Se você tirar a LinkedIn em ⚙ Equipe, ela não volta.
 
 ## Dando ordens (você é o chefe)
 

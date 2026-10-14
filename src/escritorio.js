@@ -719,6 +719,29 @@ export function criarEstacao(agente) {
     });
   }
 
+  if (agente.id === 'linkedin') {
+    // ring light de criador de conteúdo, ao lado da mesa, e o celular com o post no ar
+    const ring = new THREE.Group();
+    ring.position.set(-1.05, 0, zCentro - 0.1);
+    ring.add(cilindro(0.012, 0.012, 1.45, metal, 0, 0.73, 0, 6));
+    [0, 2.1, 4.2].forEach((ang) => ring.add(caixa(0.012, 0.012, 0.3, metal, Math.sin(ang) * 0.1, 0.03, Math.cos(ang) * 0.1).rotateY(ang)));
+    const anel = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 32), new THREE.MeshStandardMaterial({ color: '#fff7e6', emissive: '#fff7e6', emissiveIntensity: 0.9 }));
+    anel.position.set(0, 1.55, 0);
+    anel.rotation.y = 0.6;
+    ring.add(anel);
+    g.add(ring);
+    const cel = new THREE.Group();
+    cel.position.set(0.52, altura + 0.03, zCentro + 0.1);
+    cel.rotation.y = -0.35;
+    cel.add(caixa(0.07, 0.02, 0.07, mat('#3a3f4a'), 0, 0.01, 0));
+    cel.add(caixa(0.075, 0.15, 0.01, mat('#111'), 0, 0.09, 0).rotateX(-0.25));
+    const telaCel = new THREE.Mesh(new THREE.PlaneGeometry(0.064, 0.13), new THREE.MeshBasicMaterial({ color: agente.cor }));
+    telaCel.position.set(0, 0.09, -0.007);
+    telaCel.rotation.set(0.25, Math.PI, 0);
+    cel.add(telaCel);
+    g.add(cel);
+  }
+
   if (agente.atividade === 'quadro') {
     const quadro = criarQuadroBranco();
     quadro.grupo.position.set(0, 0, -1.55);

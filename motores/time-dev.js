@@ -34,11 +34,71 @@ export const TIME_DEV = {
     funcao: 'DevOps: deploy, Docker, servidores (VPS), CI/CD, domínios, HTTPS, monitoramento e backups',
     instrucoes: `${BASE}\n\nVocê é o DevOps. Entregue configurações prontas (Dockerfile, docker-compose, pipelines de CI/CD, Nginx/Caddy, scripts de backup) e passo a passo de deploy em VPS, com comandos exatos. Cuide de HTTPS, variáveis de ambiente, logs, monitoramento, backups do banco e segurança básica do servidor.`,
   },
+  linkedin: {
+    funcao: 'Social media de LinkedIn: pesquisa o que está em alta no LinkedIn e escreve posts com potencial de viralizar',
+    internet: true,
+    instrucoes: `Você é o especialista em LinkedIn do escritório (uma software house que cria sistemas sob medida — ERP, CRM, painéis, automações — e sites). Seu trabalho: pesquisar o que está em alta no LinkedIn e escrever posts com alto potencial de alcance e comentários. Responda em português do Brasil.
+
+1) PESQUISA (sempre, antes de escrever — use a busca na internet):
+- assuntos em alta nesta semana no nicho do post (notícias, lançamentos, relatórios, debates do mercado, LinkedIn News);
+- formatos e ganchos que estão performando no LinkedIn agora (análises recentes sobre o algoritmo e sobre posts de criadores do nicho);
+- escolha 1 assunto com timing e ângulo próprio. O LinkedIn não tem lista pública de "posts mais curtidos": não invente curtidas, números nem posts de pessoas. Todo dado que usar precisa de fonte com data.
+
+2) ESCRITA (regras do que viraliza no LinkedIn):
+- gancho nas 2 primeiras linhas (até ~200 caracteres, antes do "...ver mais"): afirmação forte, número real, contradição ou cena concreta;
+- frases curtas, uma ideia por linha, muito espaço em branco; leitura fácil no celular;
+- formatos que funcionam: história real com lição, opinião contrária bem fundamentada, lista prática passo a passo, bastidores com números reais, antes e depois;
+- de 900 a 1.800 caracteres; tom humano e de quem faz, não de propaganda;
+- sem link no corpo (o alcance cai): link vai no primeiro comentário;
+- feche com uma pergunta específica que gere comentários de verdade;
+- 3 a 5 hashtags relevantes no final; emojis com moderação;
+- nada de "comente SIM", "curta se concorda" ou corrente: o LinkedIn derruba esse tipo de isca.
+
+3) DE QUEM É O POST: se a tarefa tiver um cliente, siga a ficha dele (tom, público, o que evitar). Sem cliente, escreva como o fundador da software house, com autoridade em tecnologia para negócios (ERP, CRM, automação, sites). Se faltar algo, siga com suposições explícitas.
+
+ENTREGA, neste formato:
+## O que está em alta
+3 a 5 tendências em tópicos, cada uma com fonte (link) e data, e por que escolheu a do post.
+## Post pronto para publicar
+o texto final, pronto para colar.
+## Outros 2 ganchos
+duas alternativas para as primeiras linhas, para teste A/B.
+## Primeiro comentário
+o comentário para fixar (com o link, se houver).
+## Imagem ou carrossel
+sugestão do visual; se for carrossel, o texto de cada slide.
+## Quando postar
+melhor dia e horário (horário de Brasília) para o público do post.`,
+  },
   documentador: {
     funcao: 'Documentador: README, documentação técnica, manual do usuário e a documentação viva do projeto',
     instrucoes: `${BASE}\n\nVocê é o Documentador. Escreva documentação clara: README (o que é, como instalar, rodar e fazer deploy), documentação da API, decisões de arquitetura, e manuais do usuário passo a passo para quem usa o sistema no dia a dia. Mantenha a documentação do projeto atualizada com o que a equipe entrega.`,
   },
 };
+
+// Papéis criados depois da primeira versão do time: entram uma vez nas equipes que já
+// existem (com a mesma IA do back-end). Se você tirar o agente da equipe, ele não volta.
+export const PAPEIS_NOVOS = ['linkedin'];
+// Papéis que não escrevem código: não recebem o contexto do repositório do projeto
+export const SEM_CODIGO = new Set(['linkedin']);
+
+export function adicionarPapeisNovos(bruto) {
+  if (!bruto || typeof bruto !== 'object') return bruto;
+  const oferecidos = Array.isArray(bruto._papeis) ? bruto._papeis : [];
+  const faltam = PAPEIS_NOVOS.filter((id) => !oferecidos.includes(id) && !(id in bruto));
+  const ids = Object.keys(bruto).filter((k) => !k.startsWith('_'));
+  if (!faltam.length || !ids.length) return bruto;
+  const molde = bruto.backend || Object.values(bruto).find((c) => c?.provedor && c.provedor !== 'webhook');
+  if (!molde?.provedor || molde.provedor === 'webhook') return bruto;
+  const novo = { ...bruto, _papeis: [...new Set([...oferecidos, ...PAPEIS_NOVOS])] };
+  for (const id of faltam) {
+    const ia = Object.fromEntries(['provedor', 'modelo', 'baseUrl', 'chaveEnv', 'esforco', 'reserva'].filter((k) => molde[k] !== undefined).map((k) => [k, molde[k]]));
+    if (ia.reserva === id) delete ia.reserva;
+    const { internet, ...papel } = TIME_DEV[id];
+    novo[id] = { ...ia, ...papel, ...(internet && ['anthropic', 'gemini'].includes(ia.provedor) ? { internet: true } : {}) };
+  }
+  return novo;
+}
 
 // Ids do time antigo (agência de marketing) → ids do time de desenvolvimento.
 export const IDS_ANTIGOS = { pesquisador: 'requisitos', programador: 'backend', redator: 'documentador', revisor: 'qa' };
@@ -68,8 +128,10 @@ export function migrarConfiguracao(bruto) {
     if (novo[id] || !molde) continue;
     const ia = Object.fromEntries(['provedor', 'modelo', 'baseUrl', 'chaveEnv', 'esforco', 'reserva'].filter((k) => molde[k] !== undefined).map((k) => [k, molde[k]]));
     if (ia.reserva === id) delete ia.reserva;
-    novo[id] = { ...ia, ...papel };
+    const { internet, ...resto } = papel;
+    novo[id] = { ...ia, ...resto, ...(internet && ['anthropic', 'gemini'].includes(ia.provedor) ? { internet: true } : {}) };
   }
+  novo._papeis = [...PAPEIS_NOVOS];
   novo._time = 'dev';
   return novo;
 }
