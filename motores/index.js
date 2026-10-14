@@ -15,7 +15,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PROVEDORES, chamarIA, NOMES, listarModelos } from './provedores.js';
-import { migrarConfiguracao, IDS_ANTIGOS } from './time-dev.js';
+import { migrarConfiguracao, IDS_ANTIGOS, adicionarPapeisNovos, SEM_CODIGO } from './time-dev.js';
 
 const VOLTAR_AO_OCIOSO = 8000;
 
@@ -37,10 +37,11 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
   let avisado = '';
 
   // Relido a cada ordem: dá para editar o motores.json sem reiniciar.
+  // Papéis novos do time (ex.: LinkedIn) entram sozinhos na equipe; quem você tirar não volta.
   function lerBruto() {
     try {
-      if (existsSync(arquivoEditado)) return JSON.parse(readFileSync(arquivoEditado, 'utf8'));
-      return JSON.parse(process.env.MOTORES_JSON || readFileSync(arquivo, 'utf8'));
+      if (existsSync(arquivoEditado)) return adicionarPapeisNovos(JSON.parse(readFileSync(arquivoEditado, 'utf8')));
+      return adicionarPapeisNovos(JSON.parse(process.env.MOTORES_JSON || readFileSync(arquivo, 'utf8')));
     } catch (erro) {
       if (erro.code !== 'ENOENT' && avisado !== erro.message) console.error(`motores.json inválido: ${(avisado = erro.message)}`);
       return {};
@@ -73,7 +74,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     let texto = c.instrucoes || `Você é o agente "${id}" de um escritório de IA${c.funcao ? `, responsável por: ${c.funcao}` : ''}. Cumpra a tarefa do chefe com qualidade e responda em português.`;
     const ficha = ordem?.cliente ? fichaCliente(ordem.cliente) : '';
     if (ficha) texto += `\n\nEsta tarefa é do projeto do cliente abaixo. Siga a ficha (escopo, stack, integrações, regras de negócio e restrições) em tudo o que entregar:\n\n${ficha}`;
-    if (codigo && !podeDelegar) texto += `\n\n${codigo}`;
+    if (codigo && !podeDelegar && !SEM_CODIGO.has(id)) texto += `\n\n${codigo}`;
     if (c.internet) texto += '\n\nVocê pode pesquisar na internet: use a busca para trazer dados atuais e cite as fontes. Não invente números nem fontes.';
     if (podeDelegar) {
       const equipe = Object.entries(cfg).filter(([outro, o]) => outro !== id && !o.delegar)
@@ -266,7 +267,7 @@ export function criarMotores({ raiz, dadosDir, ordens, registrarStatus, marcarEn
     let usado = c; // muda se a IA reserva precisar entrar
     const meta = () => ({ motor: rotulo(usado), ms: Date.now() - inicio }); // para o relatório comparar IAs
     try {
-      const codigo = ordem.cliente ? await contextoCodigo(ordem.cliente, ordem).catch(() => '') : '';
+      const codigo = ordem.cliente && !SEM_CODIGO.has(id) ? await contextoCodigo(ordem.cliente, ordem).catch(() => '') : '';
       const chamada = await chamarIA(c, { instrucoes: instrucoesDe(id, c, cfg, podeDelegar, ordem, codigo), pedido: pedidoDe(ordem), ordem, agente: id }, {
         cfg, aoEsperar: (tarefa) => registrarStatus({ id, status: 'aguardando', tarefa }),
       });

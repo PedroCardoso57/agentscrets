@@ -41,6 +41,10 @@ const DIALOGOS = [
   { quem: 'requisitos', precisa: 'cliente', falas: [['A', 'Revisei as regras de negócio do projeto {cliente}.'], ['B', 'Mudou muita coisa?'], ['A', 'Só o fluxo de pagamento.']] },
   { quem: 'orquestrador', falas: [['A', 'Como estão as tarefas, {outro}?'], ['B', 'Quase tudo pronto, falta revisar.'], ['A', 'Perfeito, me avisa quando subir.']] },
   { quem: 'orquestrador', minimo: 3, falas: [['A', 'Bom trabalho essa semana, pessoal.'], ['B', 'Valeu! O time tá afiado.']] },
+  { quem: 'linkedin', falas: [['A', 'Meu último post no LinkedIn passou de mil comentários!'], ['B', 'Sério? Qual foi o gancho?'], ['A', 'Uma história real de cliente. Sempre funciona.']] },
+  { quem: 'linkedin', falas: [['A', '{outro}, posso contar no LinkedIn o que você fez essa semana?'], ['B', 'Pode! Só não expõe o cliente.'], ['A', 'Claro, só os bastidores.']] },
+  { quem: 'linkedin', falas: [['A', 'Tô vendo o que tá em alta hoje no LinkedIn.'], ['B', 'E aí, o que tá bombando?'], ['A', 'IA no dia a dia das empresas, como sempre 😄']] },
+  { quem: 'linkedin', precisa: 'cliente', falas: [['A', 'Vou fazer um post sobre o projeto {cliente}.'], ['B', 'Boa! Mostra o antes e depois.']] },
   // na reunião, com três
   { minimo: 3, falas: [['A', 'Bom, vamos alinhar rapidinho?'], ['B', 'Do meu lado tá tudo andando.'], ['C', 'Do meu também, sem bloqueio.'], ['A', 'Ótimo, então seguimos.']] },
   { minimo: 3, falas: [['A', 'Alguém precisa de ajuda com alguma coisa?'], ['B', 'Por enquanto não.'], ['C', 'Talvez mais tarde, com os testes.']] },
